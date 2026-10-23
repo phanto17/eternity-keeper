@@ -1,5 +1,32 @@
 # Changelog
 
+## 1.1.0-beta (2026-10-23)
+
+### New
+
+- **Find a save quickly.** The save list has a filter box (character, area,
+  save name, date, difficulty or chapter), sorts by date or by name, and shows
+  the saves as tiles or as a list with columns. The layout you pick is kept.
+- **Companions' names in your game's language** in the character list, the
+  Inventory tab, the party and Compare: Edér, and "Mère en deuil" or
+  "Trauernde Mutter" for the Grieving Mother. A name you gave a companion
+  yourself is kept.
+- **A refreshed look**: clearer panels and controls, gentle transitions
+  between views, and an error banner you can close.
+
+### Faster
+
+- **Saves open in about half the time.** The editor reads a save's files
+  once instead of piece by piece, and looks up what it has already seen. What
+  it writes is unchanged: tested byte for byte against the previous version
+  and against the game's own files.
+- The save list unpacks the saves' pictures in parallel.
+
+### Fixed
+
+- In light mode, a party member's name on the Inventory tab turned white,
+  and so unreadable, under the mouse.
+
 ## 1.0.1-beta (2026-10-09)
 
 ### Fixed
