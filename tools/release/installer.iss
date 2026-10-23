@@ -29,7 +29,7 @@
 ; (the one a GitHub workflow runs in, or the checkout's "origin"), so that a
 ; release names the place that made it.
 #ifndef AppUrl
-  #define AppUrl "https://github.com/tmtjsk/eternity-keeper"
+  #define AppUrl "https://github.com/phanto17/eternity-keeper"
 #endif
 
 ; Inno Setup 6.3 named the architecture that also covers x64 emulation on Arm;
