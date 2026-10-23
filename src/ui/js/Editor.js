@@ -149,12 +149,14 @@ var Editor = function () {
 		// which belongs to no single tab but must not outlive the save either.
 		$('.view, .save-only').hide();
 		self.SavedGame.html.characterList.empty();
+		$('#characterQuickFilter').val('');
 
 		// The collapse handle only makes sense next to an actual character list.
 		$('body').toggleClass('list-view', !!self.state.listView);
 
 		if (self.state.listView) {
-			self.SaveSearch.html.searchContainer.show();
+			$('.navbar-nav > li').removeClass('ek-nav-active');
+			self.SaveSearch.html.searchContainer.removeClass('ek-view-enter').show().addClass('ek-view-enter');
 			self.SaveSearch.html.saveBlocks.show();
 			self.CurrencyEditor.transition({enabled: false});
 			self.DifficultyEditor.transition({enabled: false});
@@ -213,6 +215,7 @@ var Editor = function () {
 			self.EditHistory.transition({enabled: true});
 			self.SaveSearch.html.saveActions.hide();
 			self.Modifications.html.saveButton.show();
+			$('#fabRow').addClass('ek-fab-enter');
 		}
 	};
 

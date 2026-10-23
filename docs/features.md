@@ -1208,5 +1208,13 @@ the game.
   round-tripping both test saves' 168 world-state and area files through the
   build before and the build after: every file came out byte for byte the
   same in both, and the same as the game wrote it.
+- **The save list** (2026-10-22): a filter box, sorting by date or name, and
+  a grid or list layout kept between runs (`SaveListModel.js` holds the
+  ordering, tested in plain node). Selecting or opening a save no longer
+  redraws the tiles; `render()` redraws them only when the list itself is a
+  new one, so anything that edits an entry in place hands over a copy of the
+  list (Rename does; the tile kept its old name until a new search when it
+  did not). The tiles are unpacked in parallel; `UnpackedSaves` and
+  `leaveOut` are synchronized.
 - "Saving…" spinner during saves; off-screen-window guard; run.bat resolves the
   bundled JDK.

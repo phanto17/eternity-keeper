@@ -2468,6 +2468,11 @@ body.theme-light .inv-panel-head {
 	color: #4a2f14;
 }
 
+/* The dark theme's hover turns the name white, which is white on cream here. */
+body.theme-light .inv-pack-owner:hover .inv-pack-owner-name {
+	color: #1f1206;
+}
+
 /* ---- layout refinements ---------------------------------------------------
    The party packs only need room for a 16-slot grid plus the owner column, so
    the panel is sized to its content rather than stretched across the window. */

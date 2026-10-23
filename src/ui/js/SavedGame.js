@@ -1084,31 +1084,41 @@ var SavedGame = function () {
 			self.switchCharacter(main.GUID);
 		}
 
+		var showAnimatedView = (viewEl, navId) => {
+			$('.navbar-nav > li').removeClass('ek-nav-active');
+			if (navId) {
+				$('#' + navId).addClass('ek-nav-active');
+			}
+
+			var animClass = self.charSwitching ? 'ek-char-switch' : 'ek-view-enter';
+			viewEl.removeClass('ek-view-enter ek-char-switch').show().addClass(animClass);
+		};
+
 		$('.view').hide();
 		switch(self.state.view) {
 			case self.views.RAW:
-				self.html.rawTable.show();
+				showAnimatedView(self.html.rawTable, 'menuCharacter');
 				filterTable(self.html.searchRaw, self.html.rawTable);
 				break;
 
 			case self.views.GLOBALS:
-				self.html.globalsTable.show();
+				showAnimatedView(self.html.globalsTable, 'menuGlobals');
 				filterTable(self.html.searchGlobals, self.html.globalsTable);
 				break;
 
 			case self.views.CONSOLE:
-				Eternity.ConsoleTab.html.consoleView.show();
+				showAnimatedView(Eternity.ConsoleTab.html.consoleView, 'menuConsole');
 				Eternity.ConsoleTab.transition({enabled: true});
 				break;
 
 			case self.views.INVENTORY:
-				Eternity.InventoryEditor.html.inventoryView.show();
+				showAnimatedView(Eternity.InventoryEditor.html.inventoryView, 'menuInventory');
 				Eternity.InventoryEditor.transition({
 					enabled: true, character: self.state.activeCharacter});
 				break;
 
 			case self.views.ABILITIES:
-				Eternity.AbilityEditor.html.abilitiesView.show();
+				showAnimatedView(Eternity.AbilityEditor.html.abilitiesView, 'menuCharacter');
 				Eternity.AbilityEditor.transition({
 					enabled: true, character: self.state.activeCharacter});
 				break;
@@ -1116,26 +1126,26 @@ var SavedGame = function () {
 			// The stronghold belongs to the party rather than to whoever
 			// happens to be selected, so no character rides along with it.
 			case self.views.STRONGHOLD:
-				Eternity.StrongholdEditor.html.strongholdView.show();
+				showAnimatedView(Eternity.StrongholdEditor.html.strongholdView, 'menuStronghold');
 				Eternity.StrongholdEditor.transition({enabled: true});
 				break;
 
 			// A grimoire belongs to the book, not to a character: the spells
 			// live on the item's own packet, so this view lists books.
 			case self.views.GRIMOIRE:
-				Eternity.GrimoireEditor.html.grimoireView.show();
+				showAnimatedView(Eternity.GrimoireEditor.html.grimoireView, 'menuGrimoire');
 				Eternity.GrimoireEditor.transition({enabled: true});
 				break;
 
 			// Stores belong to the world, not to the party. Their stock is
 			// read from the area files only once this tab is opened.
 			case self.views.VENDORS:
-				Eternity.VendorEditor.html.vendorsView.show();
+				showAnimatedView(Eternity.VendorEditor.html.vendorsView, 'menuVendors');
 				Eternity.VendorEditor.transition({enabled: true, visible: true});
 				break;
 
 			default:
-				self.html.character.show();
+				showAnimatedView(self.html.character, 'menuCharacter');
 		}
 	};
 };
@@ -1182,7 +1192,12 @@ SavedGame.prototype.adopt = function (theirs, label, extra) {
 
 SavedGame.prototype.switchCharacter = function (guid) {
 	var self = this;
-	self.transition({activeCharacter: guid});
+	self.charSwitching = true;
+	try {
+		self.transition({activeCharacter: guid});
+	} finally {
+		self.charSwitching = false;
+	}
 };
 
 SavedGame.prototype.resurrect = function (guid) {

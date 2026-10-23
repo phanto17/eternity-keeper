@@ -31,7 +31,24 @@ var Modifications = function () {
 	self.state = $.extend({}, defaultState);
 	self.html = {};
 
+	var ensureBackupBadge = () => {
+		if (!self.html.saveNameDialog || self.html.saveBackupBadge) {
+			return;
+		}
+
+		var badge = $(
+			'<div class="ek-backup-badge" id="saveBackupBadge">'
+			+ '  <i class="fa fa-shield"></i>'
+			+ '  <span>Your original save is never overwritten. If a save of this name is already '
+			+ 'there, a copy of it is kept in <em>File &rarr; Backups</em> first.</span>'
+			+ '</div>');
+
+		self.html.saveNameDialog.find('.modal-body').append(badge);
+		self.html.saveBackupBadge = badge;
+	};
+
 	self.init = () => {
+		ensureBackupBadge();
 		self.html.saveButton.click(self.save.bind(self));
 		self.html.saveChanges.click(self.save.bind(self));
 		self.html.dontSaveChanges.click(self.discardChanges.bind(self));
@@ -132,9 +149,11 @@ Modifications.prototype.chooseSaveFolder = function () {
 // Fades the confirmation toast in and back out again a moment later.
 Modifications.prototype.showSavedToast = function () {
 	var self = this;
+	self.html.saveToast.html(
+		'<i class="fa fa-check-circle"></i> Saved. The save you opened is unchanged.');
 	self.html.saveToast.addClass('show');
 	clearTimeout(self.toastTimer);
-	self.toastTimer = setTimeout(() => self.html.saveToast.removeClass('show'), 2600);
+	self.toastTimer = setTimeout(() => self.html.saveToast.removeClass('show'), 2800);
 };
 
 Modifications.prototype.saveName = function () {

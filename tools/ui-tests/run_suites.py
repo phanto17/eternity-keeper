@@ -14,7 +14,8 @@ SUITES = sys.argv[1:] or ["smoke.py", "functional.py", "panels.py", "audit.py", 
                           "catalog_offer.py", "backups_ui.py", "stronghold_people.py",
                           "quick_and_weapons.py", "responsive.py", "vendors.py",
                           "party_care.py", "find.py", "compare.py", "loadout.py",
-                          "undo.py", "sale.py", "damaged.py", "checklist.py", "language.py"]
+                          "undo.py", "sale.py", "damaged.py", "checklist.py", "language.py",
+                          "save_views.py"]
 
 
 def settings():
@@ -38,7 +39,9 @@ def settings():
 
 def restart():
     config.stop_editors()
-    subprocess.Popen([JAVA, "-Dek.data=" + settings(), "-Dek.debugPort=%d" % config.PORT,
+    subprocess.Popen([JAVA, "-Dek.data=" + settings(),
+                      "-Dek.ui=" + os.path.join(REPO, "src", "ui"),
+                      "-Dek.debugPort=%d" % config.PORT,
                       "-Djava.library.path=" + os.path.join(REPO, "lib", "native", "win64"),
                       "-jar", os.path.join(REPO, "target", "eternity-keeper.jar")], cwd=REPO,
                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,

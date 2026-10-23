@@ -27,6 +27,9 @@ var SaveSearch = function () {
 		, selected: -1
 		, busy: false
 		, unreadable: []
+		, filterQuery: ''
+		, sortBy: 'default'
+		, viewMode: 'grid'
 	};
 
 	// How many of the files left out are named on the page; eternity.log has
@@ -68,25 +71,136 @@ var SaveSearch = function () {
 		return info.playerName + ' - ' + (info.sceneTitle || info.systemName) + userSaveName;
 	};
 
-	var populateSaveBlocks = (container, template, data, opening, selected) => {
-		data.forEach((info, i) => {
+	var matchesFilter = (info, query) => {
+		if (!query) {
+			return true;
+		}
+
+		var needle = query.toLowerCase();
+		var haystack = [
+			saveName(info)
+			, info.playerName || ''
+			, info.sceneTitle || ''
+			, info.systemName || ''
+			, info.userSaveName || ''
+			, info.date || ''
+			, info.difficulty || ''
+			, info.chapter !== undefined ? 'chapter ' + info.chapter : ''
+		].join(' ').toLowerCase();
+
+		return haystack.indexOf(needle) !== -1;
+	};
+
+	var populateSaveBlocks = (container, template, data, opening, selected, filterQuery, sortBy) => {
+		var entries = SaveListModel.filteredAndSorted(
+			data, filterQuery, sortBy, matchesFilter);
+
+		if (data.length > 0 && entries.length === 0) {
+			container.append(
+				$('<div class="ek-save-empty-filter">')
+					.text('No saved games match "' + filterQuery + '".'));
+			return entries.length;
+		}
+
+		entries.forEach((entry, seq) => {
+			var info = entry.info;
+			var i = entry.index;
+			var locationAndSaveName = info.sceneTitle || info.systemName || '';
+			if (info.userSaveName) {
+				locationAndSaveName += ' (' + info.userSaveName + ')';
+			}
 			var tile = CloneFactory.clone(template);
-			var portraits = info.portraits.map(
+			var portraits = (info.portraits || []).map(
 					portrait => '<img src="data:image/png;base64,' + portrait + '">');
 
+			var delayMs = Math.min(seq * 25, 250) + 'ms';
+			tile.addClass('ek-tile-enter')
+				.css({'-webkit-animation-delay': delayMs, 'animation-delay': delayMs});
+
 			if (opening === i) {
-				tile.find('i').show();
+				tile.addClass('ek-save-opening');
+				tile.find('i').hide();
+				tile.append(
+					'<span class="ek-opening-badge">'
+					+ '<i class="fa fa-spinner fa-pulse"></i> Opening save&hellip;'
+					+ '</span>');
 			}
 
-			tile.toggleClass('selected', selected === i);
+			tile.attr('data-save-index', i).toggleClass('selected', selected === i);
 			tile.find('.screenshot img').attr('src', 'data:image/png;base64,' + info.screenshot);
 			tile.find('.name').text(saveName(info));
 			tile.find('.date').text(info.date);
 			tile.find('.portraits').html(portraits.join(' '));
+			tile.find('.list-character').text(info.playerName || '');
+			tile.find('.list-location').text(locationAndSaveName);
+			tile.find('.list-date').text(info.date || '');
+			tile.find('.list-difficulty').text(info.difficulty || '');
+			tile.find('.list-chapter').text(info.chapter === undefined ? '' : info.chapter);
 			tile.click(self.select.bind(self, i));
-			tile.dblclick(self.open.bind(self, info, i));
+			tile.dblclick(() => self.loadSelected(info, i));
 			container.append(tile);
 		});
+
+		return entries.length;
+	};
+
+	// Builds the filter, sort and view controls inside #searchContainer once
+	// at startup.
+	var ensureModernControls = () => {
+		if (!self.html.searchContainer || self.html.saveFilterBar) {
+			return;
+		}
+
+		var filterBar = $(
+			'<div class="ek-save-filter-bar" id="saveFilterBar">'
+			+ '  <div class="ek-save-filter-input-wrap">'
+			+ '    <i class="fa fa-search"></i>'
+			+ '    <input type="text" class="form-control" id="saveListFilter"'
+			+ '           placeholder="Filter saves by character, area, save name or date..." autocomplete="off" spellcheck="false">'
+			+ '  </div>'
+			+ '  <div class="ek-save-sort-wrap">'
+			+ '    <label for="saveListSort">Sort</label>'
+			+ '    <select class="form-control" id="saveListSort">'
+			+ '      <option value="date-desc">Newest first</option>'
+			+ '      <option value="date-asc">Oldest first</option>'
+			+ '      <option value="name-asc">Character &amp; area (A&ndash;Z)</option>'
+			+ '      <option value="default">Folder order</option>'
+			+ '    </select>'
+			+ '  </div>'
+			+ '  <div class="ek-save-view-toggle" role="group" aria-label="Save list view">'
+			+ '    <button type="button" class="btn btn-default btn-sm" id="saveGridView" title="Grid view" aria-label="Grid view"><i class="fa fa-th-large"></i></button>'
+			+ '    <button type="button" class="btn btn-default btn-sm" id="saveListView" title="List view" aria-label="List view"><i class="fa fa-list"></i></button>'
+			+ '  </div>'
+			+ '  <span class="ek-save-count" id="saveListCount"></span>'
+			+ '</div>');
+
+		self.html.searchContainer.append(filterBar);
+		self.html.saveFilterBar = filterBar;
+		self.html.saveListFilter = filterBar.find('#saveListFilter');
+		self.html.saveListSort = filterBar.find('#saveListSort');
+		self.html.saveListCount = filterBar.find('#saveListCount');
+		self.html.saveGridView = filterBar.find('#saveGridView');
+		self.html.saveListView = filterBar.find('#saveListView');
+
+		self.html.saveListFilter.on('input keyup', () => {
+			self.state.filterQuery = self.html.saveListFilter.val();
+			self.state.selected = -1;
+			self.html.saveActions.hide();
+			self.renderSaveTilesOnly();
+		});
+
+		self.html.saveListSort.on('change', () => {
+			self.state.sortBy = self.html.saveListSort.val();
+			self.renderSaveTilesOnly();
+		});
+
+		self.html.saveGridView.on('click', () => self.setViewMode('grid'));
+		self.html.saveListView.on('click', () => self.setViewMode('list'));
+
+		// A file dropped on the window would make the browser leave the editor
+		// for it. Opening saves by dropping them is not supported yet: Chrome 45
+		// tells the page a dropped file's name but not its folder.
+		$(document).on('dragover drop', e => e.preventDefault());
 	};
 
 	// The original .savegame archive corresponding to an extracted save.
@@ -103,11 +217,18 @@ var SaveSearch = function () {
 	self.html = {};
 
 	self.init = () => {
+		ensureModernControls();
+		try {
+			self.state.viewMode = localStorage.getItem('ekSaveViewMode') === 'list'
+				? 'list' : 'grid';
+		} catch (e) {
+			self.state.viewMode = 'grid';
+		}
 		self.html.searchForSavedGames.click(self.search.bind(self));
 		self.html.saveActionLoad.off('click').click(() => {
 			var info = self.selectedInfo();
 			if (info) {
-				self.open(info, self.state.selected);
+				self.loadSelected(info, self.state.selected);
 			}
 		});
 		self.html.saveActionRename.off('click').click(self.renamePrompt.bind(self));
@@ -120,21 +241,83 @@ var SaveSearch = function () {
 			'shown.bs.modal', () => self.html.renameSaveInput[0].select());
 	};
 
-	self.render = newState => {
-		self.state = $.extend({}, defaultState, newState);
-		self.html.savedGameLocation.val(self.state.searchPath);
+	self.renderSaveTilesOnly = () => {
 		self.html.saveBlocks.empty();
-		self.html.saveBlocks.show();
-		Eternity.render({listView: true});
-		populateSaveBlocks(
+		self.html.saveBlocks.toggleClass('list-view', self.state.viewMode === 'list');
+		if (self.state.viewMode === 'list' && self.state.saves.length > 0) {
+			self.html.saveBlocks.append(
+				'<div class="save-list-header" aria-hidden="true">'
+				+ '<span>Character</span><span>Location / save name</span>'
+				+ '<span>Modified</span><span>Difficulty</span><span>Chapter</span>'
+				+ '</div>');
+		}
+		var shownCount = populateSaveBlocks(
 			self.html.saveBlocks
 			, self.html.saveBlockClone
 			, self.state.saves
 			, self.state.opening
-			, self.state.selected);
+			, self.state.selected
+			, self.state.filterQuery
+			, self.state.sortBy);
+
+		if (self.html.saveFilterBar) {
+			self.html.saveFilterBar.toggle(self.state.saves.length > 0);
+			var total = self.state.saves.length;
+			self.html.saveListCount.text(
+				shownCount === total
+					? total + (total === 1 ? ' save' : ' saves')
+					: shownCount + ' of ' + total + ' saves');
+		}
+	};
+
+	self.render = newState => {
+		var previous = self.state;
+		self.state = $.extend({}, defaultState, newState);
+		self.html.savedGameLocation.val(self.state.searchPath);
+		self.html.saveBlocks.show();
+		if (!Eternity.state.listView) {
+			Eternity.render({listView: true});
+		}
+
+		if (self.html.saveListFilter && self.html.saveListFilter.val() !== self.state.filterQuery) {
+			self.html.saveListFilter.val(self.state.filterQuery);
+		}
+
+		if (self.html.saveListSort && self.html.saveListSort.val() !== self.state.sortBy) {
+			self.html.saveListSort.val(self.state.sortBy);
+		}
+
+		if (previous.saves !== self.state.saves
+			|| previous.filterQuery !== self.state.filterQuery
+			|| previous.sortBy !== self.state.sortBy
+			|| previous.viewMode !== self.state.viewMode) {
+			self.renderSaveTilesOnly();
+		} else {
+			if (previous.selected !== self.state.selected) {
+				self.html.saveBlocks.find('.save-info').removeClass('selected');
+				self.html.saveBlocks.find('[data-save-index="' + self.state.selected + '"]')
+					.addClass('selected');
+			}
+
+			if (previous.opening !== self.state.opening) {
+				self.html.saveBlocks.find('.save-info').removeClass('ek-save-opening');
+				self.html.saveBlocks.find('.ek-opening-badge').remove();
+				if (self.state.opening !== false) {
+					var openingTile = self.html.saveBlocks
+						.find('[data-save-index="' + self.state.opening + '"]');
+					openingTile.addClass('ek-save-opening')
+						.append('<span class="ek-opening-badge"><i class="fa fa-spinner fa-pulse"></i> Opening save&hellip;</span>');
+				}
+			}
+		}
+
+		if (self.html.saveGridView) {
+			self.html.saveGridView.toggleClass('active', self.state.viewMode === 'grid');
+			self.html.saveListView.toggleClass('active', self.state.viewMode === 'list');
+		}
 
 		var actionable = self.state.selected >= 0;
-		self.html.saveActions.toggle(actionable);
+		self.html.saveActions.toggle(actionable).toggleClass('ek-fab-enter', actionable);
 		self.html.saveActions.find('button').prop(
 			'disabled', self.state.busy || self.state.opening !== false);
 
@@ -155,6 +338,30 @@ var SaveSearch = function () {
 			self.html.searchForSavedGames.find('span').text('Search');
 		}
 	};
+};
+
+SaveSearch.prototype.setViewMode = function (mode) {
+	var self = this;
+	if (mode !== 'grid' && mode !== 'list') {
+		return;
+	}
+	try {
+		localStorage.setItem('ekSaveViewMode', mode);
+	} catch (e) {
+		// The view still changes for this session when storage is unavailable.
+	}
+	self.transition({viewMode: mode});
+};
+
+SaveSearch.prototype.loadSelected = function (info, index) {
+	var self = this;
+	if (!info) {
+		return;
+	}
+	self.state.selected = index;
+	self.html.saveBlocks.find('.save-info').removeClass('selected');
+	self.html.saveBlocks.find('[data-save-index="' + index + '"]').addClass('selected');
+	self.open(info, index);
 };
 
 SaveSearch.prototype.select = function (i) {
@@ -303,7 +510,9 @@ SaveSearch.prototype.renameConfirmed = function () {
 		setBusy(false);
 		self.html.renameSaveDialog.modal('hide');
 		info.userSaveName = JSON.parse(response).userSaveName;
-		self.transition({});
+		// A new list, so render() draws the tiles again: it redraws them only
+		// when the list itself changes, not when one entry is edited in place.
+		self.transition({saves: self.state.saves.slice()});
 	};
 
 	var failure = (errno, response) => {

@@ -43,14 +43,18 @@ import java.util.Locale;
 import java.util.Optional;
 
 public class EternityKeeper extends JFrame {
-	private CefApp cefApp;
-	private CefClient cefClient;
-	private CefBrowser browser;
+	private static final Color OBSIDIAN_BG = new Color(0x1b, 0x16, 0x11);
+	private final CefApp cefApp;
+	private final CefClient cefClient;
+	private final CefBrowser browser;
 
 	private EternityKeeper (final File ui) {
+		setBackground(OBSIDIAN_BG);
+		getContentPane().setBackground(OBSIDIAN_BG);
+
 		CefApp.addAppHandler(new CefAppHandlerAdapter(null) {
 			@Override
-			public void stateHasChanged (CefAppState state) {
+			public void stateHasChanged (final CefAppState state) {
 				if (state == CefAppState.TERMINATED) {
 					shutdown();
 				}
@@ -72,12 +76,17 @@ public class EternityKeeper extends JFrame {
 		final String index = new File(ui, "index.html").toPath().toUri().toString();
 		browser = cefClient.createBrowser(index, OS.isLinux(), false);
 		setDefaultCloseOperation(DO_NOTHING_ON_CLOSE);
-		getContentPane().add(browser.getUIComponent(), BorderLayout.CENTER);
+
+		final Component uiComponent = browser.getUIComponent();
+		if (uiComponent != null) {
+			uiComponent.setBackground(OBSIDIAN_BG);
+		}
+		getContentPane().add(uiComponent, BorderLayout.CENTER);
 		pack();
 
 		addWindowListener(new WindowAdapter() {
 			@Override
-			public void windowClosing (WindowEvent e) {
+			public void windowClosing (final WindowEvent e) {
 				if (Environment.getInstance().state().closing) {
 					cefApp.dispose();
 					dispose();
