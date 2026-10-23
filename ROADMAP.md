@@ -930,6 +930,18 @@ Not requested, offered for the record.
   soulbound sword goes on the Watcher of another one. Verified in the game:
   the copies' enchantments and the abilities they grant, a pet summoned for
   a copied pet item, and the replaced gear in the stash.
+- **Open a save by dropping it on the window.** Taken out of 1.1.0-beta
+  before release: the page's `drop` event gets only a file's name (Chrome
+  45's `File` has no path; `file.path` is Electron's), and an AWT
+  `DropTarget` on the frame never sees a drop over the browser, whose own
+  window takes it. The way in is JCEF's `CefDragHandler.onDragEnter`, whose
+  `CefDragData.getFileNames()` has full paths: keep the last one seen and let
+  the page's `drop` ask Java for it. The back end is there already
+  (`OpenSavedGame` accepts a `.savegame` path; `SaveArchiveService.stageArchive`
+  unpacks it into a folder of its own). Before shipping it: refuse a drop
+  while a save is open with changes not saved or applied (invariant 21), and
+  give a dropped save's tile its real path, because the list's Delete and
+  Rename build the path from the saves folder and the file name.
 
 ---
 

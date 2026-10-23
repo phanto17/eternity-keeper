@@ -116,8 +116,13 @@ public class SaveInfoListerTest extends TestHarness {
 
 		new SaveInfoLister(savesLocation, mockCallback).run();
 		final JSONObject reply = replies(mockCallback, 1).get(0);
-		assertTrue(reply.getJSONArray("saves").toString()
-			, new JSONArray(String.format(SAVES_JSON, save1, save2)).similar(reply.getJSONArray("saves")));
+		final JSONArray listed = reply.getJSONArray("saves");
+		assertEquals(1431272692000L, listed.getJSONObject(0).getLong("timestampMillis"));
+		for (int i = 0; i < listed.length(); i++) {
+			listed.getJSONObject(i).remove("timestampMillis");
+		}
+		assertTrue(listed.toString()
+			, new JSONArray(String.format(SAVES_JSON, save1, save2)).similar(listed));
 
 		// The folder's two other files are not called .savegame, so they are
 		// nothing the list left out: it never took them for saves.

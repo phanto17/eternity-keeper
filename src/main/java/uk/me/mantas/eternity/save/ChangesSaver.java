@@ -24,7 +24,6 @@ import net.lingala.zip4j.exception.ZipException;
 import net.lingala.zip4j.model.ZipParameters;
 import org.apache.commons.io.FileUtils;
 import org.cef.callback.CefQueryCallback;
-import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 import uk.me.mantas.eternity.EKUtils;
@@ -38,6 +37,7 @@ import uk.me.mantas.eternity.game.EternityDateTime;
 import uk.me.mantas.eternity.game.EternityTimeInterval;
 import uk.me.mantas.eternity.game.ObjectPersistencePacket;
 import uk.me.mantas.eternity.handlers.SaveChanges;
+import uk.me.mantas.eternity.handlers.SaveWriteRequestAdapter;
 import uk.me.mantas.eternity.serializer.DeserializedPackets;
 import uk.me.mantas.eternity.serializer.PacketDeserializer;
 import uk.me.mantas.eternity.serializer.WriteRefusedException;
@@ -51,16 +51,49 @@ import java.util.stream.Collectors;
 import static uk.me.mantas.eternity.EKUtils.findSubComponent;
 import static uk.me.mantas.eternity.EKUtils.unwrapPacket;
 
+/**
+ * Persists scalar and structural modifications from the working save directory
+ * into a packaged {@code .savegame} archive.
+ *
+ * <p>Decoupled so callers can invoke {@link #saveChanges()} headlessly without a
+ * JCEF callback, while {@link #run()} adapts the result for the browser bridge.
+ */
 public class ChangesSaver implements Runnable {
 	private static final Logger logger = Logger.getLogger(ChangesSaver.class);
 	private final CefQueryCallback callback;
-	private final JSONObject request;
+	private final SaveWriteCommand command;
 	private final PacketDeserializerFactory packetDeserializer;
 
-	public ChangesSaver(final String request, final CefQueryCallback callback) {
+	/**
+	 * Creates a headless {@code ChangesSaver} for direct domain or test invocation.
+	 *
+	 * @param request the save request payload
+	 */
+	public ChangesSaver (final JSONObject request) {
+		this.callback = null;
+		this.command = new SaveWriteRequestAdapter().parse(Objects.requireNonNull(request, "request"));
+		this.packetDeserializer = Environment.getInstance().factory().packetDeserializer();
+	}
+
+	/**
+	 * Compatibility constructor for callers which still have the raw bridge request.
+	 */
+	public ChangesSaver (final String request, final CefQueryCallback callback) {
 		this.callback = callback;
-		this.request = new JSONObject(request);
-		packetDeserializer = Environment.getInstance().factory().packetDeserializer();
+		SaveWriteCommand parsed = null;
+		try {
+			parsed = new SaveWriteRequestAdapter().parse(request);
+		} catch (final JSONException ignored) {
+		}
+		this.command = parsed;
+		this.packetDeserializer = Environment.getInstance().factory().packetDeserializer();
+	}
+
+	/** Creates a writer from an already validated typed command. */
+	public ChangesSaver (final SaveWriteCommand command, final CefQueryCallback callback) {
+		this.callback = callback;
+		this.command = Objects.requireNonNull(command, "command");
+		this.packetDeserializer = Environment.getInstance().factory().packetDeserializer();
 	}
 
 	// The handful of settings saveinfo.xml keeps its own copy of, so the load
@@ -70,32 +103,17 @@ public class ChangesSaver implements Runnable {
 		"Difficulty", "TrialOfIron", "TacticalMode"
 	};
 
-	private static Map<String, String> summaryFields (final JSONObject saveData) {
+	private static Map<String, String> summaryFields (final SaveWriteCommand command) {
 		final Map<String, String> fields = new LinkedHashMap<>();
-		final JSONObject globals = saveData.optJSONObject("globals");
-		if (globals == null) {
-			return fields;
-		}
-
-		for (final String objectName : globals.keySet()) {
-			final JSONObject components = globals.optJSONObject(objectName);
-			if (components == null) {
-				continue;
-			}
-
-			final JSONObject gameState = components.optJSONObject("GameState");
+		for (final Map<String, Map<String, String>> components : command.getGlobals().values()) {
+			final Map<String, String> gameState = components.get("GameState");
 			if (gameState == null) {
 				continue;
 			}
 
 			for (final String field : SUMMARY_FIELDS) {
-				final JSONObject value = gameState.optJSONObject(field);
-				if (value == null) {
-					continue;
-				}
-
-				final String written = value.optString("value", "");
-				if (!written.isEmpty()) {
+				final String written = gameState.get(field);
+				if (written != null && !written.isEmpty()) {
 					fields.put(field, written);
 				}
 			}
@@ -104,84 +122,118 @@ public class ChangesSaver implements Runnable {
 		return fields;
 	}
 
-	@Override
-	public void run() {
+	/**
+	 * Executes the save workflow headlessly without requiring a JCEF callback.
+	 *
+	 * @return the directory that was packaged into the new {@code .savegame}
+	 * @throws JSONException            if the request payload is missing required fields
+	 * @throws IOException              if cloning, serializing, backing up, or zipping fails
+	 * @throws DeserializationException if {@code MobileObjects.save} cannot be read
+	 */
+	public File saveChanges () throws IOException, DeserializationException {
+		return execute().getWrittenDirectory();
+	}
+
+	/** Executes the save workflow and returns typed paths for the adapter. */
+	public SaveWriteResult execute () throws IOException, DeserializationException {
 		final Environment environment = Environment.getInstance();
-		try {
-			boolean savedYet = request.getBoolean("savedYet");
-			final String saveName = request.getString("saveName");
-			final String absolutePath = request.getString("absolutePath");
-			final JSONObject saveData = request.getJSONObject("saveData");
+		boolean savedYet = command.isSavedYet();
 
-			final WorkingSave working = environment.state().workingSave();
-			File saveDirectory = working.written();
-			if (savedYet && saveDirectory == null) {
-				logger.error(
-						"Client claimed we had already saved but "
-								+ "server had no record having saved previously.%n");
+		final WorkingSave working = environment.state().workingSave();
+		File saveDirectory = working.written();
+		if (savedYet && saveDirectory == null) {
+			logger.error(
+				"Client claimed we had already saved but "
+					+ "server had no record having saved previously.%n");
 
-				savedYet = false;
-			}
+			savedYet = false;
+		}
 
-			// The first Save starts from whatever the managers' Applies left,
-			// which is not necessarily the directory the list opened.
-			if (!savedYet) {
+		// The first Save starts from whatever the managers' Applies left,
+		// which is not necessarily the directory the list opened.
+		if (!savedYet) {
 				saveDirectory = cloneExtractedSave(
-					working.forReading(new File(absolutePath), false).getAbsolutePath());
-				working.written(saveDirectory);
+				working.forReading(new File(command.getAbsolutePath()), false).getAbsolutePath());
+			working.written(saveDirectory);
+		}
+
+		SaveGameInfo.updateSaveInfo(
+			saveDirectory, command.getSaveName(), summaryFields(command));
+		final List<Property> written = updateMobileObjects(saveDirectory, command);
+		redrawPartyThumbnails(saveDirectory, written);
+		packageSaveGame(saveDirectory);
+
+		// Undo reaches back to here: what this wrote is in the files an
+		// Apply's undo would put back, and would go with them.
+		working.history().clear();
+		final String savesLocation = Settings.getInstance().json.optString("savesLocation", "");
+		return new SaveWriteResult(saveDirectory,
+			new File(new File(savesLocation), saveDirectory.getName()));
+	}
+
+	@Override
+	public void run () {
+		try {
+			if (command == null) {
+				if (callback != null) {
+					callback.failure(-1, SaveChanges.jsonError());
+				}
+				return;
 			}
-
-			SaveGameInfo.updateSaveInfo(
-					saveDirectory, saveName, summaryFields(saveData));
-			final List<Property> written = updateMobileObjects(saveDirectory, saveData);
-			redrawPartyThumbnails(saveDirectory, written);
-			packageSaveGame(saveDirectory);
-
-			// Undo reaches back to here: what this wrote is in the files an
-			// Apply's undo would put back, and would go with them.
-			working.history().clear();
-			callback.success("{\"success\":true}");
+			execute();
+			if (callback != null) {
+				callback.success("{\"success\":true}");
+			}
 		} catch (final JSONException e) {
-			callback.failure(-1, SaveChanges.jsonError());
+			if (callback != null) {
+				callback.failure(-1, SaveChanges.jsonError());
+			}
 		} catch (final WriteRefusedException e) {
 			// Said as it stands: "IO Error" and a class name would bury what the
 			// user needs to know -- the save could not all be read, or the
 			// changes would have left it contradicting itself, and so nothing
 			// was written.
 			logger.error("Save refused: %s%n", e.getMessage());
-			callback.failure(-1, SaveChanges.genericError(e.getMessage()));
+			if (callback != null) {
+				callback.failure(-1, SaveChanges.genericError(e.getMessage()));
+			}
 		} catch (final IOException e) {
 			logger.error(e, "IO/Zip Error during save: %s%n", e.toString());
-			callback.failure(-1, SaveChanges.genericError("IO Error: " + e.toString()));
+			if (callback != null) {
+				callback.failure(-1, SaveChanges.genericError("IO Error: " + e.toString()));
+			}
 		} catch (final DeserializationException e) {
 			logger.error("Unable to deserialize new save.%n");
-			callback.failure(-1, SaveChanges.deserializationError());
+			if (callback != null) {
+				callback.failure(-1, SaveChanges.deserializationError());
+			}
 		} catch (final Exception e) {
 			logger.error(e, "Unexpected error during save: %s%n", e.toString());
-			callback.failure(-1, SaveChanges.genericError("Unexpected Error: " + e.toString()));
+			if (callback != null) {
+				callback.failure(-1, SaveChanges.genericError("Unexpected Error: " + e.toString()));
+			}
 		}
 	}
 
-	// TODO: separate file operations from in-memory operations
-
-	static void packageSaveGame(File saveDirectory) throws ZipException, IOException {
-		String savesLocation = Settings.getInstance().json.optString("savesLocation", "");
+	static void packageSaveGame (final File saveDirectory) throws ZipException, IOException {
+		final String savesLocation = Settings.getInstance().json.optString("savesLocation", "");
 		if (savesLocation.isEmpty()) {
 			logger.error("Saves location is not set in settings!%n");
 			throw new IOException("Pillars of Eternity saves location is not set in settings.");
 		}
 
-		File pillarsSavesDirectory = new File(savesLocation);
+		final File pillarsSavesDirectory = new File(savesLocation);
 		logger.info("Target saves directory: %s (exists: %b, dir: %b)%n",
-				pillarsSavesDirectory.getAbsolutePath(), pillarsSavesDirectory.exists(),
-				pillarsSavesDirectory.isDirectory());
+			pillarsSavesDirectory.getAbsolutePath(), pillarsSavesDirectory.exists(),
+			pillarsSavesDirectory.isDirectory());
 
 		if (!pillarsSavesDirectory.exists()) {
 			throw new IOException(
-					"Pillars of Eternity saves directory does not exist: " + pillarsSavesDirectory.getAbsolutePath());
+				"Pillars of Eternity saves directory does not exist: "
+					+ pillarsSavesDirectory.getAbsolutePath());
 		}
 
-		File saveFile = new File(pillarsSavesDirectory, saveDirectory.getName());
+		final File saveFile = new File(pillarsSavesDirectory, saveDirectory.getName());
 		logger.info("Packaging save game to: %s%n", saveFile.getAbsolutePath());
 
 		if (saveFile.exists()) {
@@ -191,11 +243,12 @@ public class ChangesSaver implements Runnable {
 			SaveBackups.forThisProcess().backup(saveFile, SaveBackups.Reason.OVERWRITE);
 			logger.info("Old save file exists, attempting to delete: %s%n", saveFile.getAbsolutePath());
 			if (!FileUtils.deleteQuietly(saveFile)) {
-				logger.warn("Unable to delete old save game '%s', attempting overwrite.%n", saveFile.getAbsolutePath());
+				logger.warn("Unable to delete old save game '%s', attempting overwrite.%n",
+					saveFile.getAbsolutePath());
 			}
 		}
 
-		File[] saveContents = saveDirectory.listFiles();
+		final File[] saveContents = saveDirectory.listFiles();
 		if (saveContents == null || saveContents.length == 0) {
 			logger.error("Save directory is empty or inaccessible: %s%n", saveDirectory.getAbsolutePath());
 			throw new IOException("No files found to package in " + saveDirectory.getAbsolutePath());
@@ -203,9 +256,9 @@ public class ChangesSaver implements Runnable {
 
 		logger.info("Zipping %d files into %s%n", saveContents.length, saveFile.getAbsolutePath());
 
-		ZipFile saveArchive = new ZipFile(saveFile);
+		final ZipFile saveArchive = new ZipFile(saveFile);
 		saveArchive.addFiles(
-				new ArrayList<>(Arrays.asList(saveContents)), new ZipParameters());
+			new ArrayList<>(Arrays.asList(saveContents)), new ZipParameters());
 		logger.info("Successfully packaged save game: %s%n", saveFile.getAbsolutePath());
 	}
 
@@ -213,12 +266,14 @@ public class ChangesSaver implements Runnable {
 	// its own snapshot from when it last saved, so after a party or portrait
 	// edit it showed the old faces. They are redrawn from what is being
 	// written. A thumbnail is never worth failing a Save over.
-	private static void redrawPartyThumbnails(final File saveDirectory, final List<Property> packets) {
+	private static void redrawPartyThumbnails (
+		final File saveDirectory, final List<Property> packets) {
+
 		try {
 			final String game = Settings.getInstance().json.optString("gameLocation", "");
 			final File gameData = game == null || game.isEmpty()
-					? null
-					: new File(game, Environment.getInstance().config().pillarsDataDirectory());
+				? null
+				: new File(game, Environment.getInstance().config().pillarsDataDirectory());
 
 			PartyPortraits.refresh(saveDirectory, packets, gameData);
 		} catch (final IOException | RuntimeException e) {
@@ -226,21 +281,24 @@ public class ChangesSaver implements Runnable {
 		}
 	}
 
-	private List<Property> updateMobileObjects(final File saveDirectory, final JSONObject saveData)
-			throws IOException, DeserializationException {
+	private List<Property> updateMobileObjects (
+		final File saveDirectory, final SaveWriteCommand command)
+		throws IOException, DeserializationException {
 
-		return updateMobileObjects(saveDirectory, saveData, this.packetDeserializer);
+		return updateMobileObjects(saveDirectory, command, this.packetDeserializer);
 	}
 
 	/** @return the packets as written, for anything else Save derives from them */
-	private static List<Property> updateMobileObjects(final File saveDirectory, final JSONObject saveData,
-			PacketDeserializerFactory packetDeserializer)
-			throws IOException, DeserializationException {
+	private static List<Property> updateMobileObjects (
+		final File saveDirectory
+		, final SaveWriteCommand command
+		, final PacketDeserializerFactory packetDeserializer)
+		throws IOException, DeserializationException {
 
 		final File mobileObjectsFile = new File(saveDirectory, "MobileObjects.save");
 		if (!mobileObjectsFile.exists()) {
 			logger.warn("MobileObjects.save not found in %s, skipping mobile objects update.%n",
-					saveDirectory.getAbsolutePath());
+				saveDirectory.getAbsolutePath());
 			return Collections.emptyList();
 		}
 
@@ -252,79 +310,82 @@ public class ChangesSaver implements Runnable {
 			throw new DeserializationException();
 		}
 
-		final List<Property> updatedMobileObjects = deserialized.get().getPackets().stream().map(
-				packet -> updateMobileObject(deserializer, packet, saveData))
-				.collect(Collectors.toList());
+		// Keyed by GUID, so each of the thousands of packets in the world state
+		// finds its character's edits at once rather than by a search.
+		final Map<String, SaveWriteCommand.CharacterUpdate> charactersByGuid = command.getCharacters();
+
+		final List<Property> updatedMobileObjects = deserialized.get().getPackets().stream()
+			.map(packet -> updateMobileObject(deserializer, packet, command, charactersByGuid))
+			.collect(Collectors.toList());
 
 		deserialized.get().setPackets(updatedMobileObjects);
-
 		deserialized.get().replace(mobileObjectsFile);
 		return updatedMobileObjects;
 	}
 
-	private static Property updateMobileObject(
-			final PacketDeserializer deserializer, final Property property, final JSONObject saveData) {
+	private static Property updateMobileObject (
+		final PacketDeserializer deserializer
+		, final Property property
+		, final SaveWriteCommand command
+		, final Map<String, SaveWriteCommand.CharacterUpdate> charactersByGuid) {
 
 		final ObjectPersistencePacket packet = unwrapPacket(property);
-		final JSONArray characters = saveData.getJSONArray("characters");
-		final JSONObject globals = saveData.getJSONObject("globals");
-		final float currency = (float) saveData.getDouble("currency");
+		final float currency = (float) command.getCurrency();
 
-		// TODO: Refactor out this check for the 'player' object.
-		if (packet.ObjectName.toLowerCase().startsWith("player_")) {
-			updateCurrency((ComplexProperty) property, currency);
+		if (packet.ObjectName != null) {
+			if (packet.ObjectName.toLowerCase().startsWith("player_")) {
+				updateCurrency((ComplexProperty) property, currency);
 
-			// Absent when the save records none, and from any request made
-			// before the party dialog could change it.
-			if (saveData.has("campingSupplies")) {
-				updateCampingSupplies((ComplexProperty) property, saveData.getInt("campingSupplies"));
+				// Absent when the save records none, and from any request made
+				// before the party dialog could change it.
+				if (command.getCampingSupplies() != null) {
+					updateCampingSupplies((ComplexProperty) property, command.getCampingSupplies());
+				}
+			}
+
+			if (packet.ObjectName.startsWith("Global")) {
+				updateGlobal(deserializer, (ComplexProperty) property, command.getGlobals().get("Global"));
+			}
+
+			if (packet.ObjectName.startsWith("InGameGlobal")) {
+				updateGlobal(
+					deserializer, (ComplexProperty) property, command.getGlobals().get("InGameGlobal"));
 			}
 		}
 
-		if (packet.ObjectName.startsWith("Global")) {
-			updateGlobal(deserializer, (ComplexProperty) property, globals.getJSONObject("Global"));
-		}
+		final SaveWriteCommand.CharacterUpdate character = packet.ObjectID != null
+			? charactersByGuid.get(packet.ObjectID)
+			: null;
 
-		if (packet.ObjectName.startsWith("InGameGlobal")) {
-			updateGlobal(
-					deserializer, (ComplexProperty) property, globals.getJSONObject("InGameGlobal"));
-		}
+		if (character != null) {
+			updateCharacter(deserializer, (ComplexProperty) property, character.getStats());
 
-		for (int i = 0; i < characters.length(); i++) {
-			final JSONObject character = characters.getJSONObject(i);
-			if (character.getString("GUID").equals(packet.ObjectID)) {
-				updateCharacter(
-						deserializer, (ComplexProperty) property, character.getJSONObject("stats"));
+			// A portrait is two plain strings on a different component, so
+			// it rides the same scalar path rather than needing its own
+			// write tier. Absent when the character has no Portrait at all.
+			final Map<String, String> portraitPaths = character.getPortraitPaths();
+			if (!portraitPaths.isEmpty()) {
+				updateComponent(
+					deserializer, (ComplexProperty) property, "Portrait", portraitPaths);
+			}
 
-				// A portrait is two plain strings on a different component, so
-				// it rides the same scalar path rather than needing its own
-				// write tier. Absent when the character has no Portrait at all.
-				final JSONObject portraitPaths = character.optJSONObject("portraitPaths");
-				if (portraitPaths != null) {
-					updateComponent(
-							deserializer, (ComplexProperty) property, "Portrait", portraitPaths);
-				}
-
-				// A heal is the game's own flag for a full refill on the first
-				// frame after the load, on the Health component.
-				final JSONObject health = character.optJSONObject("health");
-				if (health != null) {
-					updateComponent(deserializer, (ComplexProperty) property, "Health", health);
-				}
-
-				break;
+			// A heal is the game's own flag for a full refill on the first
+			// frame after the load, on the Health component.
+			final Map<String, String> health = character.getHealth();
+			if (!health.isEmpty()) {
+				updateComponent(deserializer, (ComplexProperty) property, "Health", health);
 			}
 		}
 
 		return property;
 	}
 
-	private static void updateCurrency(final ComplexProperty root, final float currency) {
+	private static void updateCurrency (final ComplexProperty root, final float currency) {
 		final Optional<ComplexProperty> currencyValue = root
-				.<SingleDimensionalArrayProperty>findProperty("ComponentPackets")
-				.flatMap(components -> findSubComponent(components, "PlayerInventory"))
-				.flatMap(playerInventory -> playerInventory.<DictionaryProperty>findProperty("Variables"))
-				.flatMap(variables -> variables.findEntry("currencyTotalValue"));
+			.<SingleDimensionalArrayProperty>findProperty("ComponentPackets")
+			.flatMap(components -> findSubComponent(components, "PlayerInventory"))
+			.flatMap(playerInventory -> playerInventory.<DictionaryProperty>findProperty("Variables"))
+			.flatMap(variables -> variables.findEntry("currencyTotalValue"));
 
 		if (!currencyValue.isPresent()) {
 			logger.error("Unable to navigate property structure when updating currency!%n");
@@ -334,12 +395,12 @@ public class ChangesSaver implements Runnable {
 		Property.update(currencyValue.get(), "v", currency);
 	}
 
-	private static void updateCampingSupplies(final ComplexProperty root, final int count) {
+	private static void updateCampingSupplies (final ComplexProperty root, final int count) {
 		final Optional<Property> supplies = root
-				.<SingleDimensionalArrayProperty>findProperty("ComponentPackets")
-				.flatMap(components -> findSubComponent(components, "PlayerInventory"))
-				.flatMap(playerInventory -> playerInventory.<DictionaryProperty>findProperty("Variables"))
-				.flatMap(variables -> variables.findEntry("campingSupplies"));
+			.<SingleDimensionalArrayProperty>findProperty("ComponentPackets")
+			.flatMap(components -> findSubComponent(components, "PlayerInventory"))
+			.flatMap(playerInventory -> playerInventory.<DictionaryProperty>findProperty("Variables"))
+			.flatMap(variables -> variables.findEntry("campingSupplies"));
 
 		if (!supplies.isPresent()) {
 			logger.error("Unable to find campingSupplies when updating the player's inventory!%n");
@@ -350,65 +411,76 @@ public class ChangesSaver implements Runnable {
 		Property.update(supplies.get(), Integer.valueOf(Math.max(0, count)));
 	}
 
-	private static void updateGlobal(
-			final PacketDeserializer deserializer, final ComplexProperty root, final JSONObject global) {
+	private static void updateGlobal (
+		final PacketDeserializer deserializer, final ComplexProperty root,
+		final Map<String, Map<String, String>> global) {
+		if (global == null) {
+			return;
+		}
 
-		final Optional<SingleDimensionalArrayProperty> packetsProperty = root.findProperty("ComponentPackets");
+		final Optional<SingleDimensionalArrayProperty> packetsProperty =
+			root.findProperty("ComponentPackets");
 
 		if (!packetsProperty.isPresent()) {
 			logger.error("Unable to navigate property structure when updating globals.%n");
 			return;
 		}
 
-		for (final String updateKey : global.keySet()) {
-			final JSONObject update = global.getJSONObject(updateKey);
-			final Optional<ComplexProperty> packetProperty = findSubComponent(packetsProperty.get(), updateKey);
+		for (final Map.Entry<String, Map<String, String>> entry : global.entrySet()) {
+			final String updateKey = entry.getKey();
+			final Optional<ComplexProperty> packetProperty =
+				findSubComponent(packetsProperty.get(), updateKey);
 
 			if (!packetProperty.isPresent()) {
 				logger.error(
-						"Client tried to update global ComponentPacket '%s' "
-								+ "which did not exist in the saved data.%n",
-						updateKey);
+					"Client tried to update global ComponentPacket '%s' "
+						+ "which did not exist in the saved data.%n",
+					updateKey);
 				continue;
 			}
 
-			final ComponentPersistencePacket packet = (ComponentPersistencePacket) packetProperty.get().obj;
-			final Optional<DictionaryProperty> variables = packetProperty.get().findProperty("Variables");
+			final ComponentPersistencePacket packet =
+				(ComponentPersistencePacket) packetProperty.get().obj;
+			final Optional<DictionaryProperty> variables =
+				packetProperty.get().findProperty("Variables");
 
 			if (!variables.isPresent()) {
 				logger.error(
-						"Invalid ComponentPersistencePacket detected in ComponentPackets "
-								+ "list when navigating globals.%n");
+					"Invalid ComponentPersistencePacket detected in ComponentPackets "
+						+ "list when navigating globals.%n");
 				continue;
 			}
 
 			if (packet.TypeString.equals("GlobalVariables")) {
-				updateHashtable(deserializer, variables.get(), update);
+				updateHashtable(deserializer, variables.get(), entry.getValue());
 			} else {
-				updateVariables(deserializer, variables.get(), update);
+				updateVariables(deserializer, variables.get(), entry.getValue());
 			}
 		}
 	}
 
-	private static void updateCharacter(
-			final PacketDeserializer deserializer, final ComplexProperty root, final JSONObject character) {
+	private static void updateCharacter (
+		final PacketDeserializer deserializer, final ComplexProperty root,
+		final Map<String, String> character) {
 
 		updateComponent(deserializer, root, "CharacterStats", character);
 	}
 
 	/** Writes a set of scalars onto one named component of a game object. */
-	private static void updateComponent(
-			final PacketDeserializer deserializer, final ComplexProperty root,
-			final String component, final JSONObject updates) {
+	private static void updateComponent (
+		final PacketDeserializer deserializer
+		, final ComplexProperty root
+		, final String component
+		, final Map<String, String> updates) {
 
 		final Optional<DictionaryProperty> variables = root
-				.<SingleDimensionalArrayProperty>findProperty("ComponentPackets")
-				.flatMap(components -> findSubComponent(components, component))
-				.flatMap(found -> found.findProperty("Variables"));
+			.<SingleDimensionalArrayProperty>findProperty("ComponentPackets")
+			.flatMap(components -> findSubComponent(components, component))
+			.flatMap(found -> found.findProperty("Variables"));
 
 		if (!variables.isPresent()) {
 			logger.error(
-					"Unable to navigate property structure when updating %s!%n", component);
+				"Unable to navigate property structure when updating %s!%n", component);
 
 			return;
 		}
@@ -416,18 +488,21 @@ public class ChangesSaver implements Runnable {
 		updateVariables(deserializer, variables.get(), updates);
 	}
 
-	private static void updateVariables(
-			final PacketDeserializer deserializer, final DictionaryProperty variables, final JSONObject updates) {
+	private static void updateVariables (
+		final PacketDeserializer deserializer
+		, final DictionaryProperty variables
+		, final Map<String, String> updates) {
 
-		for (final String updateKey : updates.keySet()) {
-			final String newValue = updates.getJSONObject(updateKey).getString("value");
+		for (final Map.Entry<String, String> update : updates.entrySet()) {
+			final String updateKey = update.getKey();
+			final String newValue = update.getValue();
 			final Optional<Property> savedValue = variables.findEntry(updateKey);
 
 			if (!savedValue.isPresent()) {
 				logger.error(
-						"Wanted to update ComponentPacket variable %s but "
-								+ "could not find it in saved data.%n",
-						updateKey);
+					"Wanted to update ComponentPacket variable %s but "
+						+ "could not find it in saved data.%n",
+					updateKey);
 
 				continue;
 			}
@@ -436,27 +511,30 @@ public class ChangesSaver implements Runnable {
 				updateValue(deserializer, savedValue.get(), newValue);
 			} catch (final NumberFormatException e) {
 				logger.error(
-						"Unable to save value '%s' in ComponentPacket variable '%s'.%n", newValue, updateKey);
+					"Unable to save value '%s' in ComponentPacket variable '%s'.%n",
+					newValue, updateKey);
 			}
 		}
 	}
 
-	private static void updateHashtable(
-			final PacketDeserializer deserializer, final DictionaryProperty variables, final JSONObject updates) {
+	private static void updateHashtable (
+		final PacketDeserializer deserializer
+		, final DictionaryProperty variables
+		, final Map<String, String> updates) {
 
 		final Optional<DictionaryProperty> data = variables.findEntry("m_data");
 		if (!data.isPresent()) {
 			logger.error(
-					"Tried to update a Hashtable property that "
-							+ "did not contain an 'm_data' Hashtable.%n");
+				"Tried to update a Hashtable property that "
+					+ "did not contain an 'm_data' Hashtable.%n");
 			return;
 		}
 
 		updateVariables(deserializer, data.get(), updates);
 	}
 
-	private static void updateValue(
-			final PacketDeserializer deserializer, final Property property, final String val) {
+	private static void updateValue (
+		final PacketDeserializer deserializer, final Property property, final String val) {
 
 		if (property instanceof SimpleProperty) {
 			final Object typedValue = castValue(property.obj, val);
@@ -467,7 +545,8 @@ public class ChangesSaver implements Runnable {
 				final Object typedValue = castValue(property.obj, val);
 				updateComplexProperty((ComplexProperty) property, typedValue);
 			} else {
-				final Optional<Property> referencedProperty = deserializer.followReference(complexProperty);
+				final Optional<Property> referencedProperty =
+					deserializer.followReference(complexProperty);
 				if (referencedProperty.isPresent()) {
 					final Object typedValue = castValue(referencedProperty.get().obj, val);
 					updateComplexProperty((ComplexProperty) referencedProperty.get(), typedValue);
@@ -477,37 +556,36 @@ public class ChangesSaver implements Runnable {
 			}
 		} else {
 			logger.error(
-					"Unable to update a property that is not SimpleProperty or ComplexProperty.%n");
+				"Unable to update a property that is not SimpleProperty or ComplexProperty.%n");
 		}
 	}
 
-	private static void updateComplexProperty(final ComplexProperty property, final Object field) {
+	private static void updateComplexProperty (final ComplexProperty property, final Object field) {
 		if (property.obj instanceof EternityDateTime) {
 			Property.update(property, "TotalSeconds", field);
 		} else if (property.obj instanceof EternityTimeInterval) {
 			Property.update(property, "SerializedSeconds", field);
 		} else {
 			logger.error(
-					"Tried to update unsupported object of type '%s'.", property.obj.getClass().getSimpleName());
+				"Tried to update unsupported object of type '%s'.",
+				property.obj.getClass().getSimpleName());
 		}
 	}
 
-	private static Object castValue(final Object primitive, final String val) {
-		final String cls = primitive.getClass().getSimpleName();
-
-		if (cls.equals("int") || cls.equals("Integer")) {
+	private static Object castValue (final Object primitive, final String val) {
+		if (primitive instanceof Integer) {
 			return Integer.parseInt(val);
 		}
 
-		if (cls.equals("double") || cls.equals("Double")) {
+		if (primitive instanceof Double) {
 			return Double.parseDouble(val);
 		}
 
-		if (cls.equals("float") || cls.equals("Float")) {
+		if (primitive instanceof Float) {
 			return Float.parseFloat(val);
 		}
 
-		if (cls.equals("boolean") || cls.equals("Boolean")) {
+		if (primitive instanceof Boolean) {
 			return Boolean.parseBoolean(val);
 		}
 
@@ -515,11 +593,7 @@ public class ChangesSaver implements Runnable {
 			return UnsignedInteger.valueOf(val);
 		}
 
-		if (primitive instanceof EternityDateTime) {
-			return Integer.parseInt(val);
-		}
-
-		if (primitive instanceof EternityTimeInterval) {
+		if (primitive instanceof EternityDateTime || primitive instanceof EternityTimeInterval) {
 			return Integer.parseInt(val);
 		}
 
@@ -532,15 +606,15 @@ public class ChangesSaver implements Runnable {
 			}
 
 			logger.error(
-					"Client returned non-existent enum value '%s' for class %s.%n", val,
-					primitive.getClass().getName());
+				"Client returned non-existent enum value '%s' for class %s.%n", val,
+				primitive.getClass().getName());
 			return primitive.getClass().getEnumConstants()[0];
 		}
 
 		return val;
 	}
 
-	private static File cloneExtractedSave(final String oldSaveAbsolutePath) throws IOException {
+	private static File cloneExtractedSave (final String oldSaveAbsolutePath) throws IOException {
 		final File oldSave = new File(oldSaveAbsolutePath);
 		if (!oldSave.exists() || !oldSave.isDirectory()) {
 			logger.error("Source save directory not found or invalid: %s%n", oldSaveAbsolutePath);
@@ -549,12 +623,12 @@ public class ChangesSaver implements Runnable {
 
 		final File newDirectory = createNewSaveDirectory(oldSaveAbsolutePath);
 
-		logger.info("Cloning save from '%s' to '%s'%n", oldSave.getAbsolutePath(), newDirectory.getAbsolutePath());
+		logger.info("Cloning save from '%s' to '%s'%n",
+			oldSave.getAbsolutePath(), newDirectory.getAbsolutePath());
 
-		int fileCount = 0;
-		if (oldSave.listFiles() != null) {
-			fileCount = oldSave.listFiles().length;
-			logger.info("Source directory contains %d files.%n", fileCount);
+		final File[] sourceFiles = oldSave.listFiles();
+		if (sourceFiles != null) {
+			logger.info("Source directory contains %d files.%n", sourceFiles.length);
 		} else {
 			logger.warn("Source directory listFiles() returned null!%n");
 		}
@@ -568,8 +642,9 @@ public class ChangesSaver implements Runnable {
 			throw e;
 		}
 
-		if (newDirectory.listFiles() != null) {
-			logger.info("Cloning complete. Target directory contains %d files.%n", newDirectory.listFiles().length);
+		final File[] targetFiles = newDirectory.listFiles();
+		if (targetFiles != null) {
+			logger.info("Cloning complete. Target directory contains %d files.%n", targetFiles.length);
 		} else {
 			logger.error("Target directory is empty after copy!%n");
 		}
@@ -603,27 +678,26 @@ public class ChangesSaver implements Runnable {
 		return String.format("%s %d %s", sessionID, gameID, sceneTitle);
 	}
 
-	static File createNewSaveDirectory(final String oldSaveAbsolutePath) throws IOException {
+	static File createNewSaveDirectory (final String oldSaveAbsolutePath) throws IOException {
 		final Environment environment = Environment.getInstance();
 		final File workingDirectory = environment.directory().working();
 		final File oldSave = new File(oldSaveAbsolutePath);
 		final String sessionID = oldSave.getName().split(" ")[0].replace("-", "");
 
 		final int gameID = getAvailableGameID(workingDirectory, sessionID);
-		final File newDirectory = createNewSaveDirectory(
-				workingDirectory, oldSave.getName(), sessionID, gameID);
-
-		return newDirectory;
+		return createNewSaveDirectory(
+			workingDirectory, oldSave.getName(), sessionID, gameID);
 	}
 
-	private static File createNewSaveDirectory(
-			File workingDirectory, String oldSaveName, String sessionID, int gameID)
-			throws IOException {
+	private static File createNewSaveDirectory (
+		final File workingDirectory
+		, final String oldSaveName
+		, final String sessionID
+		, final int gameID) throws IOException {
 
-		String sceneTitle = oldSaveName.substring(oldSaveName.lastIndexOf(" ") + 1);
-
-		File newSaveDirectory = new File(
-				workingDirectory, String.format("%s %d %s", sessionID, gameID, sceneTitle));
+		final String sceneTitle = oldSaveName.substring(oldSaveName.lastIndexOf(" ") + 1);
+		final File newSaveDirectory = new File(
+			workingDirectory, String.format("%s %d %s", sessionID, gameID, sceneTitle));
 
 		if (!newSaveDirectory.exists() && !newSaveDirectory.mkdirs()) {
 			throw new IOException("Unable to create directory: " + newSaveDirectory.getAbsolutePath());
@@ -632,18 +706,7 @@ public class ChangesSaver implements Runnable {
 		return newSaveDirectory;
 	}
 
-	private static int getAvailableGameID(File workingDirectory, String sessionID) {
-		// Games are saved with the session ID, followed by a space, followed
-		// by some number that I'm not sure about yet but is perhaps game time.
-
-		// We call that number the 'game ID' in this case as it distinguishes
-		// different games under the same session ID from each other. The game
-		// actually doesn't care if this number is correct, just that it is
-		// unique so we try to find a unique one in this method.
-
-		// TODO: try the current system epoch first, as that's what the id actually is
-		// (although the game doesn't care)
-
+	private static int getAvailableGameID (final File workingDirectory, final String sessionID) {
 		// Unique among the saves the list unpacked, and in the saves folder
 		// itself. The list is as old as the last search and leaves out what it
 		// could not read, so a number can look free while a file is sitting
@@ -677,8 +740,8 @@ public class ChangesSaver implements Runnable {
 			.collect(Collectors.toSet());
 	}
 
-	private static class DeserializationException extends Exception {
-		DeserializationException() {
+	public static class DeserializationException extends Exception {
+		DeserializationException () {
 			super();
 		}
 	}

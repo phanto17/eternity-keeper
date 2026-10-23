@@ -11,6 +11,12 @@ Three layers: JUnit tests for everything that reads or writes a save, scripted
 UI suites that drive the running editor ([tools/ui-tests](../tools/ui-tests/README.md)),
 and loading the result in the game.
 
+The save-list grid/list controls and the no-rerender selection/open behavior
+are covered by `python tools/ui-tests/run_suites.py save_views.py`. The pure
+timestamp ordering helper is covered by `node src/test/js/SaveListModelTest.js`.
+Archive staging collision and replacement cases are in `SaveGameExtractorTest`;
+the headless typed listing/open staging service is in `SaveArchiveServiceTest`.
+
 ## Test-first
 
 Work test-first: write a failing JUnit test, make it pass, refactor.

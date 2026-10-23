@@ -22,14 +22,22 @@ package uk.me.mantas.eternity.handlers;
 import org.cef.browser.CefBrowser;
 import org.cef.callback.CefQueryCallback;
 import org.cef.handler.CefMessageRouterHandlerAdapter;
+import org.json.JSONObject;
 import org.json.JSONStringer;
 import uk.me.mantas.eternity.Logger;
 import uk.me.mantas.eternity.environment.Environment;
+import uk.me.mantas.eternity.save.SaveArchiveService;
+import uk.me.mantas.eternity.save.SaveGameInfo;
 import uk.me.mantas.eternity.save.SavedGameOpener;
 
 import java.io.File;
 import java.io.IOException;
 
+/**
+ * Opens either an already-unpacked save directory (chosen from the save list)
+ * or a {@code .savegame} archive by its path. The page asks only for the
+ * former for now; opening a dropped file waits on a way to learn its folder.
+ */
 public class OpenSavedGame extends CefMessageRouterHandlerAdapter {
 	private static final Logger logger = Logger.getLogger(OpenSavedGame.class);
 
@@ -41,7 +49,8 @@ public class OpenSavedGame extends CefMessageRouterHandlerAdapter {
 		, final boolean persistent
 		, final CefQueryCallback callback) {
 
-		if (!(new File(request).exists())) {
+		final File requestedFile = new File(request);
+		if (!requestedFile.exists()) {
 			notExists(callback);
 			return true;
 		}
@@ -56,16 +65,47 @@ public class OpenSavedGame extends CefMessageRouterHandlerAdapter {
 		// can be damaged into a shape it never met: one byte changed in a real
 		// one, and this used to end the thread with the page still waiting.
 		environment.workers().execute(Answered.to(callback, () -> {
+			final SaveArchiveService archives = new SaveArchiveService(
+				environment.directory().working(), environment.state().unpacked());
+			File saveFolder = requestedFile;
+			JSONObject openedSaveInfo = null;
+
+			// A .savegame archive: unpack its tile into a folder of its own,
+			// register it in UnpackedSaves, and send its SaveGameInfo along
+			// with the opened save.
+			if (requestedFile.isFile()
+				&& requestedFile.getName().toLowerCase().endsWith(".savegame")) {
+
+				try {
+					final SaveGameInfo extracted = archives.stageArchive(requestedFile);
+					saveFolder = new File(extracted.absolutePath);
+					openedSaveInfo = ListSavedGames.saveInfoToJSONObject(extracted);
+				} catch (final SaveArchiveService.SaveArchiveException e) {
+					logger.error("Unable to stage archive '%s': %s%n"
+						, requestedFile.getAbsolutePath(), e.getMessage());
+					unpackError(callback, e.getMessage());
+					return;
+				}
+			}
+
 			// The list unpacked only what it draws; the world state and the
 			// areas follow now that the save is wanted.
 			try {
-				environment.state().unpacked().complete(new File(request));
+				archives.complete(saveFolder);
 			} catch (final IOException e) {
+				logger.error(e, "Unable to complete save extraction '%s'.%n"
+					, saveFolder.getAbsolutePath());
 				unpackError(callback, e.getMessage());
 				return;
 			}
 
-			new SavedGameOpener(request, callback).run();
+			final SavedGameOpener opener =
+				new SavedGameOpener(saveFolder.getAbsolutePath(), callback);
+			if (openedSaveInfo != null) {
+				opener.with("openedSaveInfo", openedSaveInfo);
+			}
+
+			opener.run();
 		}));
 
 		return true;

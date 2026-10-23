@@ -610,6 +610,46 @@ public class ChangesSaverTest extends TestHarness {
 		assertTrue(working.history().undoable().isEmpty());
 	}
 
+	@Test
+	public void headlessSaveChangesPersistsWithoutCefCallback () throws Exception {
+		final Environment mockEnvironment = mockEnvironment();
+		final File workingDirectory = EKUtils.createTempDir(PREFIX).get();
+		final File settingsFile = new File(workingDirectory, "settings.json");
+
+		FileUtils.writeStringToFile(settingsFile, "{}");
+		when(mockEnvironment.directory().settingsFile()).thenReturn(settingsFile);
+		when(mockEnvironment.directory().working()).thenReturn(workingDirectory);
+		when(mockEnvironment.factory().packetDeserializer())
+			.thenReturn(new PacketDeserializerFactory());
+		when(mockEnvironment.factory().sharpSerializer()).thenReturn(new SharpSerializerFactory());
+
+		final Settings mockSettings = mockSettings();
+		final JSONObject mockJSON = mock(JSONObject.class);
+		mockSettings.json = mockJSON;
+		doThrow(new JSONException("")).when(mockJSON).getString(anyString());
+		final File savesLocation = EKUtils.createTempDir(PREFIX).get();
+		when(mockJSON.optString(eq("savesLocation"), anyString()))
+			.thenReturn(savesLocation.getAbsolutePath());
+
+		final File opened = new File(
+			getClass().getResource("/ChangesSaverTest/id 0 Encampment.savegame").toURI());
+
+		final JSONObject request = new JSONObject()
+			.put("savedYet", false)
+			.put("saveName", "HEADLESS SAVE")
+			.put("absolutePath", opened.getAbsolutePath())
+			.put("saveData", new JSONObject()
+				.put("characters", new org.json.JSONArray())
+				.put("currency", 250.0)
+				.put("globals", new JSONObject()
+					.put("Global", new JSONObject())
+					.put("InGameGlobal", new JSONObject())));
+
+		final File writtenDir = new ChangesSaver(request).saveChanges();
+		assertTrue(writtenDir.isDirectory());
+		assertTrue(new File(savesLocation, writtenDir.getName()).isFile());
+	}
+
 	private enum Enum {ONE, TWO}
 
 	@Test
