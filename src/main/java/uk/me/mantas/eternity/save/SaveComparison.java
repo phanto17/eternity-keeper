@@ -681,8 +681,7 @@ public final class SaveComparison {
 		}
 
 		final String name = EKUtils.extractCharacterName(packet.ObjectName);
-		final String mapped = Environment.getInstance().config().companionNameMap().get(name);
-		return mapped != null ? mapped : name;
+		return CompanionRegistry.displayNameFor(packet.ObjectName, "").orElse(name);
 	}
 
 	/** "CRE_ArcticFox_Animal_Companion(Clone)_11" is "Arctic Fox". */

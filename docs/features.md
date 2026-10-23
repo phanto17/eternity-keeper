@@ -1160,6 +1160,11 @@ the game.
     (`SerializedNameId`) and quest titles and objectives go through
     `GameText.lookup`/`quest`, which answer in the language in use and fall
     back to English entry by entry.
+  - **Story companion names follow the same language choice**: their verified
+    `Characters` string-table IDs are in `CompanionRegistry`. A non-empty
+    `CharacterStats.OverrideName` remains the save's own name; otherwise the
+    opened character model carries the localized official name used by the
+    sidebar, inventory, party, and comparison views.
   - **Names are read once and kept**, so `SaveSettings` starts `GameText` and
     the four catalogs again when `language` or `gameLocation` changes, and only
     then. (Before this a change of game folder went unnoticed by `GameText`

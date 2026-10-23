@@ -734,15 +734,9 @@ public class InventoryManager {
 		}
 
 		final String objectName = ((ObjectPersistencePacket) character.obj).ObjectName;
-		if (objectName != null) {
-			for (final CompanionRegistry.Companion companion : CompanionRegistry.all()) {
-				final String prefix = companion.objectNamePrefix;
-				if (objectName.startsWith(prefix) && (objectName.length() == prefix.length()
-					|| "(_".indexOf(objectName.charAt(prefix.length())) >= 0)) {
-
-					return companion.displayName;
-				}
-			}
+		final Optional<String> companionName = CompanionRegistry.displayNameFor(objectName, "");
+		if (companionName.isPresent()) {
+			return companionName.get();
 		}
 
 		final String inside = EKUtils.extractCharacterName(objectName);

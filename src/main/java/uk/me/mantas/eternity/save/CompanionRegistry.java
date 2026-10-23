@@ -20,6 +20,7 @@
 package uk.me.mantas.eternity.save;
 
 import com.google.common.collect.ImmutableList;
+import uk.me.mantas.eternity.game.DatabaseString.StringTableType;
 
 import java.util.List;
 import java.util.Map;
@@ -54,6 +55,7 @@ public final class CompanionRegistry {
 		public final List<String> extraFlagsToClear;   // lenient: cleared if present
 		public final String linkedCreaturePrefix;      // pet that dies with them
 		public final String questPath;                 // companion quest, as keyed in QuestTrackers
+		public final int nameStringId;                 // Characters string-table entry
 
 		Companion (
 			final String key
@@ -62,7 +64,8 @@ public final class CompanionRegistry {
 			, final String deathFlag
 			, final List<String> extraFlagsToClear
 			, final String linkedCreaturePrefix
-			, final String questPath) {
+			, final String questPath
+			, final int nameStringId) {
 
 			this.key = key;
 			this.displayName = displayName;
@@ -71,6 +74,7 @@ public final class CompanionRegistry {
 			this.extraFlagsToClear = extraFlagsToClear;
 			this.linkedCreaturePrefix = linkedCreaturePrefix;
 			this.questPath = questPath;
+			this.nameStringId = nameStringId;
 		}
 
 		// Matches the game's companion portrait naming scheme,
@@ -113,33 +117,33 @@ public final class CompanionRegistry {
 	// Twin Elms area quests, and Zahua's px2 quest sits in the px1 folder.
 	private static final List<Companion> ALL = ImmutableList.of(
 		new Companion("Eder", "Eder", "Companion_Eder", "b_Eder_Dead", NONE, null,
-			"data/quests/companions/companion_qst_eder.quest")
+			"data/quests/companions/companion_qst_eder.quest", 13)
 		, new Companion("Aloth", "Aloth", "Companion_Aloth", "b_Aloth_dead", NONE, null,
-			"data/quests/companions/companion_qst_aloth_and_iselmyr.quest")
+			"data/quests/companions/companion_qst_aloth_and_iselmyr.quest", 11)
 		// Durance's mobile object is named Companion_GGP in real saves.
 		, new Companion("Durance", "Durance", "Companion_GGP", "bDuranceDead", NONE, null,
-			"data/quests/companions/companion_qst_durance.quest")
+			"data/quests/companions/companion_qst_durance.quest", 635)
 		, new Companion("Kana", "Kana", "Companion_Kana", "b_Kana_Dead", NONE, null,
-			"data/quests/companions/companion_qst_kana.quest")
+			"data/quests/companions/companion_qst_kana.quest", 533)
 		// Itumaak dies with her and must be replaced from the donor too.
 		, new Companion("Sagani", "Sagani", "Companion_Sagani", "b_Sagani_dead", NONE,
 			"CRE_ArcticFox_Animal_Companion",
-			"data/quests/companions/companion_qst_sagani.quest")
+			"data/quests/companions/companion_qst_sagani.quest", 15)
 		, new Companion("Pallegina", "Pallegina", "Companion_Pallegina", "b_Pallegina_Dead",
-			NONE, null, "data/quests/companions/companion_qst_pallegina.quest")
+			NONE, null, "data/quests/companions/companion_qst_pallegina.quest", 79)
 		, new Companion("Hiravias", "Hiravias", "Companion_Hiravias", "b_Hiravias_Dead",
-			NONE, null, "data/quests/13_twin_elms_elms_reach/13_qst_true_to_form.quest")
+			NONE, null, "data/quests/13_twin_elms_elms_reach/13_qst_true_to_form.quest", 837)
 		, new Companion("GrievingMother", "Grieving Mother", "Companion_GM",
 			"b_companion_gm_dead", ImmutableList.of("b_companion_gm_unavailable"), null,
-			"data/quests/companions/companion_qst_gm.quest")
+			"data/quests/companions/companion_qst_gm.quest", 634)
 		, new Companion("Maneha", "Maneha", "Companion_Maneha", "b_maneha_dead", NONE, null,
-			"data/quests/px2_companions/px2_companion_qst_maneha.quest")
+			"data/quests/px2_companions/px2_companion_qst_maneha.quest", 1734)
 		// The Devil's mobile object is Companion_Caroc.
 		, new Companion("DevilOfCaroc", "Devil of Caroc", "Companion_Caroc", "b_devil_dead",
-			NONE, null, "data/quests/px1_companions/px1_companion_qst_devil_of_caroc.quest")
+			NONE, null, "data/quests/px1_companions/px1_companion_qst_devil_of_caroc.quest", 1409)
 		// Zahua's death sets no global at all; detection is orphan-based.
 		, new Companion("Zahua", "Zahua", "Companion_Zahua", null, NONE, null,
-			"data/quests/px1_companions/px2_companion_qst_zahua.quest")
+			"data/quests/px1_companions/px2_companion_qst_zahua.quest", 1483)
 	);
 
 	private CompanionRegistry () {}
@@ -150,5 +154,39 @@ public final class CompanionRegistry {
 
 	public static Optional<Companion> byKey (final String key) {
 		return ALL.stream().filter(c -> c.key.equals(key)).findFirst();
+	}
+
+	/** Returns a companion's translated official name, falling back to English. */
+	public static String displayName (final Companion companion) {
+		return uk.me.mantas.eternity.save.GameText.getInstance()
+			.translated(StringTableType.Characters, companion.nameStringId)
+			.orElse(companion.displayName);
+	}
+
+	/**
+	 * The display name for a saved object, preserving a user-entered override.
+	 * An empty result means the object is not a registered story companion.
+	 */
+	public static Optional<String> displayNameFor (
+		final String objectName, final String override) {
+
+		if (override != null && !override.trim().isEmpty()) {
+			return Optional.of(override.trim());
+		}
+		if (objectName == null) {
+			return Optional.empty();
+		}
+
+		return ALL.stream()
+			.filter(companion -> namedFor(objectName, companion.objectNamePrefix))
+			.findFirst()
+			.map(CompanionRegistry::displayName);
+	}
+
+	// "Companion_Eder(Clone)" and "Companion_Eder_2" are Edér; an object whose
+	// name merely begins the same way is not.
+	private static boolean namedFor (final String objectName, final String prefix) {
+		return objectName.startsWith(prefix) && (objectName.length() == prefix.length()
+			|| "(_".indexOf(objectName.charAt(prefix.length())) >= 0);
 	}
 }

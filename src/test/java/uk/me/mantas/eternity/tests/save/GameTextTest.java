@@ -25,6 +25,7 @@ import org.junit.Test;
 import uk.me.mantas.eternity.EKUtils;
 import uk.me.mantas.eternity.game.DatabaseString.StringTableType;
 import uk.me.mantas.eternity.save.GameText;
+import uk.me.mantas.eternity.save.CompanionRegistry;
 import uk.me.mantas.eternity.tests.TestHarness;
 
 import java.io.File;
@@ -64,6 +65,11 @@ public class GameTextTest extends TestHarness {
 		+ "    </Entry>\n"
 		+ "  </Entries>\n"
 		+ "</StringTableFile>\n";
+	private static final String TRANSLATED_CHARACTERS = "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n"
+		+ "<StringTableFile><Entries>"
+		+ "<Entry><ID>13</ID><DefaultText>Edér locale</DefaultText></Entry>"
+		+ "<Entry><ID>634</ID><DefaultText>Matka Żalu</DefaultText></Entry>"
+		+ "</Entries></StringTableFile>";
 
 	private File install () throws IOException {
 		final Optional<File> game = EKUtils.createTempDir(PREFIX);
@@ -72,6 +78,10 @@ public class GameTextTest extends TestHarness {
 		final File tables = new File(game.get()
 			, "PillarsOfEternity_Data/data/localized/en/text/game");
 		FileUtils.write(new File(tables, "characters.stringtable"), CHARACTERS, "UTF-8");
+		final File translated = new File(game.get()
+			, "PillarsOfEternity_Data/data/localized/pl/text/game");
+		FileUtils.write(new File(translated, "characters.stringtable")
+			, TRANSLATED_CHARACTERS, "UTF-8");
 		return game.get();
 	}
 
@@ -122,6 +132,31 @@ public class GameTextTest extends TestHarness {
 		// the same as one without.
 		assertEquals(Optional.empty()
 			, GameText.getInstance().lookup(StringTableType.Characters, 329));
+	}
+
+	@Test
+	public void companionNamesFollowTheSelectedGameLanguageAndPreserveOverrides () throws IOException {
+		GameText.useTextAt(install(), "pl");
+
+		assertEquals("Edér locale", CompanionRegistry.displayName(
+			CompanionRegistry.byKey("Eder").get()));
+		assertEquals("Matka Żalu", CompanionRegistry.displayName(
+			CompanionRegistry.byKey("GrievingMother").get()));
+		assertEquals(Optional.of("My custom name")
+			, CompanionRegistry.displayNameFor("Companion_Eder(Clone)", " My custom name "));
+		assertEquals(Optional.of("Edér locale")
+			, CompanionRegistry.displayNameFor("Companion_Eder(Clone)", ""));
+		assertEquals(Optional.of("Edér locale")
+			, CompanionRegistry.displayNameFor("Companion_Eder_2", ""));
+	}
+
+	@Test
+	public void onlyACompanionsOwnObjectTakesTheirName () {
+		// A name that merely begins with a companion's prefix is someone else.
+		assertEquals(Optional.empty()
+			, CompanionRegistry.displayNameFor("Companion_EderStatue", ""));
+		assertEquals(Optional.empty()
+			, CompanionRegistry.displayNameFor("Player_Phantom(Clone)", ""));
 	}
 
 	@Test

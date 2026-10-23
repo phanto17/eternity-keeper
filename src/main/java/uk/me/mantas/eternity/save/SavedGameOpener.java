@@ -234,7 +234,7 @@ public class SavedGameOpener implements Runnable {
 			}
 		}
 
-		return companion.displayName;
+		return CompanionRegistry.displayName(companion);
 	}
 
 	private boolean isObjectPersistencePacket(final Property property) {
@@ -1041,14 +1041,10 @@ public class SavedGameOpener implements Runnable {
 
 			name = (String) stats.get().get("OverrideName").get("value");
 		} else if (isCompanion) {
-			// Listed by who she is, but her OverrideName stays the save's: Save
-			// writes every stat back, and an empty one is what lets the game
-			// show her name in the player's own language.
-			final String mappedName = Environment.getInstance().config().companionNameMap().get(name);
-
-			if (mappedName != null) {
-				name = mappedName;
-			}
+			// Keep the save's OverrideName empty; it lets the game choose its own
+			// language on load. The editor resolves the official display name
+			// independently from the selected game-language table.
+			name = CompanionRegistry.displayNameFor(packet.ObjectName, "").orElse(name);
 		}
 
 		jsonObject.put("isCompanion", isCompanion);
