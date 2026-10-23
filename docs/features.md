@@ -1195,5 +1195,13 @@ the game.
   UTF-8, BOM handled in `SaveGameInfo`).
 - **Serializer buffering**: save pipeline ~30s → ~2s (unbuffered per-byte I/O was
   the bottleneck; zip compression is not — keep NORMAL level).
+- **Serializer caches** (2026-10-22): a world state is read once into memory
+  rather than reopened and sought for each of its thousands of packets, and
+  type names, fields, enum tables and the header tables are looked up once
+  per type instead of by reflection or a list search each time. Reading a
+  save takes half as long (Caed Nua's 165 files, 20 s to 10 s). Verified by
+  round-tripping both test saves' 168 world-state and area files through the
+  build before and the build after: every file came out byte for byte the
+  same in both, and the same as the game wrote it.
 - "Saving…" spinner during saves; off-screen-window guard; run.bat resolves the
   bundled JDK.
