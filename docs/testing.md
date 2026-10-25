@@ -64,8 +64,8 @@ the achievements flag. How to do it again without surprises:
 - **Reading health and supplies in the game**: hovering a party portrait
   shows `Endurance x/y` and `Health x/y` (the number under a portrait is
   endurance only); the badge on the camp button is the camping-supplies
-  count. The load list groups saves by the player character's name, so a
-  save is found under its group, by the user save name in `saveinfo.xml`.
+  count. The load list groups saves by playthrough, so a save is found
+  under its playthrough's group, by the user save name in `saveinfo.xml`.
 - **The game's log is `%USERPROFILE%\AppData\LocalLow\Obsidian
   Entertainment\Pillars of Eternity\Player.log`** (`Player-prev.log` the run
   before): one `BEGIN LEVEL LOAD` / `LEVEL LOAD COMPLETE` pair per area and any
@@ -98,9 +98,12 @@ the achievements flag. How to do it again without surprises:
   action bar does. Double-clicking a portrait centres the view on that
   character, and clicking a spot on the area map (the map icon) moves the
   view there, which gets the party across an area without the keyboard.
-- **The load list** groups saves by the main character's name, the group
-  holding the newest save first, so the groups change places between
-  launches. A skull beside a save marks a Trial of Iron game. Scene names
+- **The load list** groups saves by playthrough: by the `SessionID` the
+  game keeps on the main character, not by the name the group is labelled
+  with (2026-10-25: a save whose world state carried another playthrough's
+  ID was listed in that one's group, and its autosave written under that ID).
+  The group holding the newest save comes first, so the groups change places
+  between launches. A skull beside a save marks a Trial of Iron game. Scene names
   are shown in the game's current language, not the one the save was made in
   (the game here was set to English by October: the registry's
   `LanguageName_h2027703280` under `HKCU\Software\Obsidian

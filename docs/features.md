@@ -674,6 +674,28 @@ the game.
     `CompareSavesTest` (2), `SaveCompareTest.js` (11, node, in CI) and
     `compare.py` (27 checks). Its first end-to-end run is how invariant 19
     was found.
+- **A main character from another playthrough** (Import character over the
+  Watcher; `save/CharacterImporter`, 2026-10-25): the use a player asked for
+  is a "chapter select" — a new Watcher dropped into a save already at Caed
+  Nua. The import replaces the main character and everything they own and
+  takes their place; the world (quests, reputation, companions, money) is the
+  save's.
+  - **The playthrough's ID lives on the main character**: the `Player`
+    component's `SessionID`. The game names autosaves by it and groups the
+    load list by it. The import copied the whole object, so the save joined
+    the other playthrough: in the game its autosave was written under that
+    ID, in that playthrough's autosave slots (which rotate through three), and
+    the load list put it in that group. The import now keeps the save's own
+    `SessionID`, and Save writes the main character's name into
+    `saveinfo.xml`'s `PlayerName` (it kept the old Watcher's until the game
+    next saved).
+  - Verified in the game (`tools/ui-tests/ingame_swap.py`): the prologue
+    game's level 1 Fire Godlike Monk over the Caed Nua game's level 15
+    paladin. The sheet, portrait, pack and party bar are the newcomer's, the
+    companions the save's; the save sits in the Caed Nua group and its
+    autosave is written under the Caed Nua ID. `Player.log` holds no
+    `already exists` and only the exceptions the untouched save logs on the
+    same route (loaded the same way as a baseline).
 - **Loadouts** (*Save to a file…* / *Put one on…* under the Inventory tab's
   paper doll, `#loadoutDialog`; `save/Loadout`, `handlers/ExportLoadout`,
   `handlers/ReadLoadout`, `handlers/ApplyLoadout`, 2026-10-02): what the

@@ -101,7 +101,9 @@ Aloth's weapon sets traded and lockpicks split into the Watcher's quick slot;
 `ingame_vendors.py` one with everything the party sold to Caed Nua's General
 Goods Merchant taken out of his stock; `ingame_import.py` one with a companion
 exported and imported over himself in a later save of the same playthrough;
-`ingame_iron.py` one with the Trial of Iron switch flipped (off by default,
+`ingame_swap.py` one with the prologue game's Watcher imported over the Caed
+Nua game's, and checks in the file that it stays in the Caed Nua
+playthrough; `ingame_iron.py` one with the Trial of Iron switch flipped (off by default,
 on for the save `EK_IRON_SAVE` names); `filedialog.py` answers the native
 file dialogs the editor opens. They are not pass/fail suites: each leaves its
 save in the test-env saves folder and writes what to look for in the game

@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.1.1-beta (unreleased)
+
+### Fixed
+
+- **A main character imported from another playthrough took the save into
+  that playthrough.** The game keeps a playthrough's ID on the main
+  character, so the save's autosaves went into the other game's autosave
+  slots (where they could replace its autosaves) and the load list showed it
+  with the other game's saves. The save now keeps its own. Starting a new
+  character at a later point in the story this way is tested in the game; the
+  README's questions say how.
+- Saving writes the main character's name into the save's summary, which
+  still named the old Watcher after a rename or an import.
+
 ## 1.1.0-beta (2026-10-23)
 
 ### New

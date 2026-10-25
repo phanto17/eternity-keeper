@@ -104,6 +104,13 @@ No: the editor never changes the setting the game uses to switch achievements of
 </details>
 
 <details>
+<summary><b>Can I start a new character later in the story?</b></summary>
+
+Yes, using a save from an earlier playthrough that is already where you want to start, say at Caed Nua. Make your new character in a new game and save, then in the editor open that save, choose **Character → Export character to file…**, open the later save and choose **Character → Import character from file…**. The newcomer replaces the main character there, and the story, reputation, companions and money stay as that save has them. Bring gear across with a loadout from the Inventory tab. This works from version 1.1.1 on, and was tested in the game.
+
+</details>
+
+<details>
 <summary><b>What is "Edit raw stats"?</b></summary>
 
 Every number the game stores on a character, for experienced users. Most of them have never been tried in the game, so the other tabs are the safe way to change things.

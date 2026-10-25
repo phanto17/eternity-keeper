@@ -650,6 +650,58 @@ public class ChangesSaverTest extends TestHarness {
 		assertTrue(new File(savesLocation, writtenDir.getName()).isFile());
 	}
 
+	// The game's load list files a save under saveinfo.xml's PlayerName. A
+	// Watcher imported from another playthrough (or renamed) was still filed
+	// under the old name until the game next saved for itself (2026-10-25).
+	@Test
+	public void saveNamesTheMainCharacterInTheLoadList () throws Exception {
+		final Environment mockEnvironment = mockEnvironment();
+		final File workingDirectory = EKUtils.createTempDir(PREFIX).get();
+		final File settingsFile = new File(workingDirectory, "settings.json");
+
+		FileUtils.writeStringToFile(settingsFile, "{}");
+		when(mockEnvironment.directory().settingsFile()).thenReturn(settingsFile);
+		when(mockEnvironment.directory().working()).thenReturn(workingDirectory);
+		when(mockEnvironment.factory().packetDeserializer())
+			.thenReturn(new PacketDeserializerFactory());
+		when(mockEnvironment.factory().sharpSerializer()).thenReturn(new SharpSerializerFactory());
+
+		final Settings mockSettings = mockSettings();
+		final JSONObject mockJSON = mock(JSONObject.class);
+		mockSettings.json = mockJSON;
+		doThrow(new JSONException("")).when(mockJSON).getString(anyString());
+		final File savesLocation = EKUtils.createTempDir(PREFIX).get();
+		when(mockJSON.optString(eq("savesLocation"), anyString()))
+			.thenReturn(savesLocation.getAbsolutePath());
+
+		final File opened = new File(
+			getClass().getResource("/ChangesSaverTest/id 0 Encampment.savegame").toURI());
+		final String player = new PacketDeserializer(new File(opened, "MobileObjects.save"))
+			.deserialize().get().getPackets().stream()
+			.map(property -> unwrapPacket(property))
+			.filter(packet -> packet.ObjectName != null && packet.ObjectName.startsWith("Player_"))
+			.findFirst().get().ObjectID;
+
+		final JSONObject request = new JSONObject()
+			.put("savedYet", false)
+			.put("saveName", "NAMED")
+			.put("absolutePath", opened.getAbsolutePath())
+			.put("saveData", new JSONObject()
+				.put("characters", new org.json.JSONArray().put(new JSONObject()
+					.put("GUID", player)
+					.put("stats", new JSONObject()
+						.put("OverrideName", new JSONObject().put("value", "Newcomer")))))
+				.put("currency", 250.0)
+				.put("globals", new JSONObject()
+					.put("Global", new JSONObject())
+					.put("InGameGlobal", new JSONObject())));
+
+		final File writtenDir = new ChangesSaver(request).saveChanges();
+		final Match saveinfo = $(new File(writtenDir, "saveinfo.xml"));
+		assertEquals("Newcomer", saveinfo.find("Simple[name='PlayerName']").attr("value"));
+		assertEquals("NAMED", saveinfo.find("Simple[name='UserSaveName']").attr("value"));
+	}
+
 	private enum Enum {ONE, TWO}
 
 	@Test

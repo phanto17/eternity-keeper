@@ -27,8 +27,11 @@ import uk.me.mantas.eternity.factory.PacketDeserializerFactory;
 import uk.me.mantas.eternity.game.ObjectPersistencePacket;
 import uk.me.mantas.eternity.serializer.DeserializedPackets;
 import uk.me.mantas.eternity.serializer.PacketDeserializer;
+import uk.me.mantas.eternity.serializer.properties.ComplexProperty;
+import uk.me.mantas.eternity.serializer.properties.DictionaryProperty;
 import uk.me.mantas.eternity.serializer.properties.Property;
 import uk.me.mantas.eternity.serializer.properties.SimpleProperty;
+import uk.me.mantas.eternity.serializer.properties.SingleDimensionalArrayProperty;
 
 import java.io.File;
 import java.io.FileNotFoundException;
@@ -188,6 +191,17 @@ public class CharacterImporter {
 			retainedObjects = removeCharacterObjects(mobileObjects, existingMatch.get(), existing);
 			levelName = existing.LevelName;
 			location = existing.Location;
+
+			// The game keeps the playthrough's ID on the main character, and
+			// names the save's autosaves by it. A Watcher from another
+			// playthrough brings that one's: the save stays this one.
+			if (isMainCharacter(existing)) {
+				final Optional<Property> session = sessionID(existingMatch.get());
+				final Optional<Property> brought = sessionID(characterProperty.get());
+				if (session.isPresent() && brought.isPresent()) {
+					Property.update(brought.get(), session.get().obj);
+				}
+			}
 		} else {
 			// Plain import: we need a character in the existing save to
 			// 'anchor' the imported character to. Just naively try to put the
@@ -325,6 +339,20 @@ public class CharacterImporter {
 		}
 
 		return retained;
+	}
+
+	// The Player component's SessionID, on the main character's packet.
+	private static Optional<Property> sessionID (final Property character) {
+		if (!(character instanceof ComplexProperty)) {
+			return Optional.empty();
+		}
+
+		return ((ComplexProperty) character)
+			.<SingleDimensionalArrayProperty>findProperty("ComponentPackets")
+			.flatMap(components -> EKUtils.findSubComponent(components, "Player"))
+			.flatMap(player -> player.<DictionaryProperty>findProperty("Variables"))
+			.flatMap(variables -> variables.<Property>findEntry("SessionID"))
+			.filter(value -> value.obj instanceof UUID);
 	}
 
 	private boolean isMainCharacter (final ObjectPersistencePacket packet) {

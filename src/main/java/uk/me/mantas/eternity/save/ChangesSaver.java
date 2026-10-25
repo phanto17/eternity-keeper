@@ -96,6 +96,29 @@ public class ChangesSaver implements Runnable {
 		this.packetDeserializer = Environment.getInstance().factory().packetDeserializer();
 	}
 
+	// The main character's name as the save now holds it: the Player_
+	// object's CharacterStats.OverrideName, read from the property tree, which
+	// is what an edit changes (the packets' own objects keep the old value).
+	private static Optional<String> mainCharacterName (final List<Property> packets) {
+		for (final Property packet : packets) {
+			final String name = unwrapPacket(packet).ObjectName;
+			if (name == null || !name.startsWith("Player_") || !(packet instanceof ComplexProperty)) {
+				continue;
+			}
+
+			return ((ComplexProperty) packet)
+				.<SingleDimensionalArrayProperty>findProperty("ComponentPackets")
+				.flatMap(components -> findSubComponent(components, "CharacterStats"))
+				.flatMap(stats -> stats.<DictionaryProperty>findProperty("Variables"))
+				.flatMap(variables -> variables.<Property>findEntry("OverrideName"))
+				.map(value -> value.obj)
+				.filter(value -> value instanceof String && !((String) value).trim().isEmpty())
+				.map(String.class::cast);
+		}
+
+		return Optional.empty();
+	}
+
 	// The handful of settings saveinfo.xml keeps its own copy of, so the load
 	// screen agrees with what the save actually contains. GameState is the
 	// authority; this just mirrors the values the edit put there.
@@ -152,14 +175,19 @@ public class ChangesSaver implements Runnable {
 		// The first Save starts from whatever the managers' Applies left,
 		// which is not necessarily the directory the list opened.
 		if (!savedYet) {
-				saveDirectory = cloneExtractedSave(
+			saveDirectory = cloneExtractedSave(
 				working.forReading(new File(command.getAbsolutePath()), false).getAbsolutePath());
 			working.written(saveDirectory);
 		}
 
-		SaveGameInfo.updateSaveInfo(
-			saveDirectory, command.getSaveName(), summaryFields(command));
 		final List<Property> written = updateMobileObjects(saveDirectory, command);
+
+		// The load list files a save under its main character's name, read
+		// from the summary: after an import of another playthrough's Watcher,
+		// or a rename, the summary still had the old one.
+		final Map<String, String> summary = summaryFields(command);
+		mainCharacterName(written).ifPresent(name -> summary.put("PlayerName", name));
+		SaveGameInfo.updateSaveInfo(saveDirectory, command.getSaveName(), summary);
 		redrawPartyThumbnails(saveDirectory, written);
 		packageSaveGame(saveDirectory);
 

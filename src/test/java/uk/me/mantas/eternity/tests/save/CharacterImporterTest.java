@@ -492,6 +492,58 @@ public class CharacterImporterTest extends TestHarness {
 		assertOverwrite(PLAYER_GUID);
 	}
 
+	// The game keeps a playthrough's ID on the main character (the Player
+	// component's SessionID) and names its autosaves by it. A Watcher brought
+	// in from another playthrough carried that one's ID along, and in the game
+	// the save's autosaves went into the other playthrough's slots
+	// (2026-10-25). The save keeps its own.
+	@Test
+	public void aMainCharacterFromAnotherPlaythroughJoinsThisOne ()
+		throws IOException
+		, URISyntaxException {
+
+		final File workingDir = tempDir();
+		final File chrFile = new File(workingDir, "player.chr");
+		assertTrue(new CharacterExporter(
+			resourceDirectory().getAbsolutePath(), PLAYER_GUID, chrFile.getAbsolutePath()).export());
+
+		// The target is another playthrough: the same save under an ID of its own.
+		final File saveDir = new File(workingDir, "target.savegame");
+		assertTrue(saveDir.mkdir());
+		final DeserializedPackets world =
+			deserialize(new File(resourceDirectory(), "MobileObjects.save"));
+		final UUID exported = sessionOf(world);
+		final UUID target = UUID.randomUUID();
+		assertTrue(Property.update(sessionProperty(world), target));
+		final File mobileObjects = new File(saveDir, "MobileObjects.save");
+		assertTrue(mobileObjects.createNewFile());
+		world.reserialize(mobileObjects);
+		assertEquals(target, sessionOf(deserialize(mobileObjects)));
+
+		final CharacterImporter importer =
+			new CharacterImporter(requestJSON(saveDir), chrFile.getAbsolutePath());
+		assertTrue(importer.overwriteCharacter());
+
+		final UUID after = sessionOf(deserialize(new File(importer.saveFile(), "MobileObjects.save")));
+		assertNotEquals("not the playthrough the character came from", exported, after);
+		assertEquals(target, after);
+	}
+
+	private Property sessionProperty (final DeserializedPackets world) {
+		final Property player = world.getPackets().stream()
+			.filter(property -> PLAYER_GUID.equals(((ObjectPersistencePacket) property.obj).ObjectID))
+			.findFirst().get();
+		final ComplexProperty component = EKUtils.findSubComponent(
+			((ComplexProperty) player).<uk.me.mantas.eternity.serializer.properties.SingleDimensionalArrayProperty>
+				findProperty("ComponentPackets").get(), "Player").get();
+		return component.<uk.me.mantas.eternity.serializer.properties.DictionaryProperty>
+			findProperty("Variables").get().<Property>findEntry("SessionID").get();
+	}
+
+	private UUID sessionOf (final DeserializedPackets world) {
+		return (UUID) sessionProperty(world).obj;
+	}
+
 	private void assertOverwrite (final String guid)
 		throws IOException
 		, URISyntaxException {
