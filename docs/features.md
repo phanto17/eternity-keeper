@@ -689,6 +689,37 @@ the game.
     `SessionID`, and Save writes the main character's name into
     `saveinfo.xml`'s `PlayerName` (it kept the old Watcher's until the game
     next saved).
+  - **The party's belongings hang off the main character too**: the
+    `StashInventory`, `QuestInventory` and `CraftingInventory` components
+    and the items they list (parented to `Player_*`), and, on
+    `PlayerInventory`, the money (`currencyTotalValue`) and the camping
+    supplies (`campingSupplies`; the component's other variables,
+    `ItemList`, `SerializedItemList` and `MaxItems`, are the Watcher's own
+    pack). The overwrite took out
+    everything the old Watcher owned, so it emptied the save's stash, quest
+    items and crafting materials and brought the other playthrough's, with
+    its money (found by review, 2026-10-27). Now the save's three
+    components move to the newcomer whole, their items stay (re-parented to
+    the newcomer's `ObjectName`), the save's money and camping supplies are
+    kept, and what the file's Watcher had in those containers is not
+    brought. The camping supplies were found in the game: the first fixed
+    save showed the prologue's 0 where the save had 4. The move runs
+    after the ID remap, which is for the file's objects only. A packet is
+    written with the reference IDs it was read with, so a container
+    carrying a shared reference cannot move to another packet: none of 13
+    saves measured has one, and a save that does is refused
+    (`CharacterImporter.movable`). Tests:
+    `aWatcherFromAnotherPlaythroughLeavesTheSavesStashQuestItemsAndMoney`;
+    `ingame_swap.py` checks the stash, the money and the camping supplies
+    (226 items, 210,753 copper, 4 supplies kept).
+  - Verified in the game (2026-10-27), the prologue Watcher over the Caed
+    Nua save again: the newcomer's sheet with 210,753 copper and 4 camping
+    supplies; the stash holds the Caed Nua books and weapons
+    ("Ninagauth's Black Pages" first), about 36 quest items (keys, letters,
+    maps) and the late-game crafting stacks (168, 201). `Player.log` holds
+    no `already exists`, and only the `StatusEffect.ClearEffect` exceptions
+    of the scene unloading on quit, which the untouched save logs too (more
+    of them; loaded the same way as a baseline).
   - Verified in the game (`tools/ui-tests/ingame_swap.py`): the prologue
     game's level 1 Fire Godlike Monk over the Caed Nua game's level 15
     paladin. The sheet, portrait, pack and party bar are the newcomer's, the

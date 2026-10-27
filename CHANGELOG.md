@@ -13,6 +13,14 @@
   README's questions say how.
 - Saving writes the main character's name into the save's summary, which
   still named the old Watcher after a rename or an import.
+- **Importing a character over your Watcher emptied the stash.** The stash,
+  the quest items and the crafting materials belong to the main character in
+  the save, so replacing the Watcher replaced them too, along with the money
+  and the camping supplies, with whatever the imported character's own game
+  had. The save now keeps its stash, quest items, crafting materials, money
+  and camping supplies; only the character is new.
+- An import that went wrong after it was written is now taken back, as every
+  other change already was, instead of staying in the save unseen.
 
 ## 1.1.0-beta (2026-10-23)
 

@@ -192,7 +192,10 @@ has the short version.
     which answers before it hands the closing over. An Apply that dies this
     way is aborted and put back (`SaveMutationHandler`'s `finally`); one that
     was written and then could not be read back is undone, so the save
-    matches what the page still shows.
+    matches what the page still shows. `ImportCharacter` keeps its own copy
+    of that lifecycle and had no undo: an import that could not be handed
+    back stayed, and the next Save wrote a character the page never showed
+    (found by review, 2026-10-27; `anImportThatCannotBeHandedBackIsTakenBack`).
 23. **The folder the save list unpacked holds only a tile's eight files**
     (`saveinfo.xml`, `screenshot.png`, `0.png`...`5.png`) until the save is
     wanted. `environment/UnpackedSaves.complete(folder)` unpacks the rest --

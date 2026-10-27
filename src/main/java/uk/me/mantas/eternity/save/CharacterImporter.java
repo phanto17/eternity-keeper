@@ -26,10 +26,14 @@ import uk.me.mantas.eternity.environment.Environment;
 import uk.me.mantas.eternity.factory.PacketDeserializerFactory;
 import uk.me.mantas.eternity.game.ObjectPersistencePacket;
 import uk.me.mantas.eternity.serializer.DeserializedPackets;
+import uk.me.mantas.eternity.serializer.CSharpCollection;
 import uk.me.mantas.eternity.serializer.PacketDeserializer;
+import uk.me.mantas.eternity.serializer.properties.CollectionProperty;
 import uk.me.mantas.eternity.serializer.properties.ComplexProperty;
 import uk.me.mantas.eternity.serializer.properties.DictionaryProperty;
+import uk.me.mantas.eternity.serializer.properties.MultiDimensionalArrayProperty;
 import uk.me.mantas.eternity.serializer.properties.Property;
+import uk.me.mantas.eternity.serializer.properties.ReferenceTargetProperty;
 import uk.me.mantas.eternity.serializer.properties.SimpleProperty;
 import uk.me.mantas.eternity.serializer.properties.SingleDimensionalArrayProperty;
 
@@ -37,7 +41,9 @@ import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -143,7 +149,7 @@ public class CharacterImporter {
 			return false;
 		}
 
-		final List<Property> chrObjects = chrDeserialized.get().getPackets();
+		List<Property> chrObjects = chrDeserialized.get().getPackets();
 		if (chrObjects.size() < 1) {
 			return false;
 		}
@@ -178,6 +184,7 @@ public class CharacterImporter {
 			: Optional.empty();
 
 		List<Property> retainedObjects = mobileObjects;
+		boolean keepsPartysBelongings = false;
 		final String levelName;
 		final Vector3 location;
 
@@ -188,7 +195,32 @@ public class CharacterImporter {
 			final ObjectPersistencePacket existing =
 				(ObjectPersistencePacket) existingMatch.get().obj;
 
-			retainedObjects = removeCharacterObjects(mobileObjects, existingMatch.get(), existing);
+			// The stash, the quest items and the crafting materials hang off
+			// the main character alone, but they are the party's: the save
+			// keeps its own, and what the file's Watcher had in them stays
+			// behind in the playthrough it came from.
+			final Set<String> partys = new HashSet<>();
+			if (isMainCharacter(existing)) {
+				if (!movable(existingMatch.get()) || !movable(characterProperty.get())) {
+					return false;
+				}
+
+				partys.addAll(partysBelongings(existing));
+				final Set<String> left = partysBelongings(chrPacket);
+				final List<Property> brought = new ArrayList<>();
+				for (final Property object : chrObjects) {
+					final String id = ((ObjectPersistencePacket) object.obj).ObjectID;
+					if (id == null || !left.contains(id.toLowerCase())) {
+						brought.add(object);
+					}
+				}
+
+				chrObjects = brought;
+				keepsPartysBelongings = true;
+			}
+
+			retainedObjects =
+				removeCharacterObjects(mobileObjects, existingMatch.get(), existing, partys);
 			levelName = existing.LevelName;
 			location = existing.Location;
 
@@ -264,6 +296,12 @@ public class CharacterImporter {
 				, remap.size(), GuidRemap.rewrite(chrObjects, remap));
 		}
 
+		// Only now: the save's containers name the save's own objects, which
+		// keep their IDs, and the remap above is for the file's.
+		if (keepsPartysBelongings) {
+			keepPartysBelongings(existingMatch.get(), characterProperty.get(), retainedObjects);
+		}
+
 		final boolean anchored = anchorCharacter(characterProperty.get(), levelName, location);
 		if (!anchored) {
 			logger.error("Unable to anchor character!%n");
@@ -315,10 +353,13 @@ public class CharacterImporter {
 		return Optional.empty();
 	}
 
+	// Everything but the character and what they own; what {@code kept} names
+	// (lower case) stays.
 	private List<Property> removeCharacterObjects (
 		final List<Property> mobileObjects
 		, final Property characterProperty
-		, final ObjectPersistencePacket character) {
+		, final ObjectPersistencePacket character
+		, final Set<String> kept) {
 
 		final List<Property> retained = new ArrayList<>();
 		for (final Property property : mobileObjects) {
@@ -329,7 +370,8 @@ public class CharacterImporter {
 			if (property.obj instanceof ObjectPersistencePacket) {
 				final ObjectPersistencePacket packet = (ObjectPersistencePacket) property.obj;
 				if (character.ObjectName != null
-					&& character.ObjectName.equals(packet.Parent)) {
+					&& character.ObjectName.equals(packet.Parent)
+					&& (packet.ObjectID == null || !kept.contains(packet.ObjectID.toLowerCase()))) {
 
 					continue;
 				}
@@ -339,6 +381,172 @@ public class CharacterImporter {
 		}
 
 		return retained;
+	}
+
+	// The party's containers, on the main character. Their money is on
+	// PlayerInventory, whose pack is their own.
+	private static final List<String> PARTYS =
+		Arrays.asList("StashInventory", "QuestInventory", "CraftingInventory");
+
+	// The IDs (lower case) the party's containers on a main character list.
+	private static Set<String> partysBelongings (final ObjectPersistencePacket character) {
+		final Set<String> ids = new HashSet<>();
+		for (final String container : PARTYS) {
+			EKUtils.findComponent(character.ComponentPackets, container)
+				.map(component -> component.Variables.get("SerializedItemList"))
+				.filter(list -> list instanceof CSharpCollection)
+				.ifPresent(list -> {
+					for (final Iterator<?> it = ((CSharpCollection) list).iterator(); it.hasNext();) {
+						ids.add(it.next().toString().toLowerCase());
+					}
+				});
+		}
+
+		return ids;
+	}
+
+	// The containers move from one character's packet to another's whole. A
+	// packet is written with the reference IDs it was read with, so one that
+	// carried a shared reference would bring an ID the other packet may use
+	// for something else. None of thirteen saves measured has one
+	// (2026-10-27); a save that does is refused rather than written wrong.
+	private static boolean movable (final Property character) {
+		for (final String container : PARTYS) {
+			final Optional<ComplexProperty> component = component(character, container);
+			if (!component.isPresent()) {
+				logger.error("The main character has no %s.%n", container);
+				return false;
+			}
+
+			if (sharesReference(component.get())) {
+				logger.error("The main character's %s shares a reference; not moving it.%n", container);
+				return false;
+			}
+		}
+
+		return component(character, "PlayerInventory")
+			.flatMap(inventory -> inventory.<DictionaryProperty>findProperty("Variables"))
+			.flatMap(variables -> variables.<ComplexProperty>findEntry("currencyTotalValue"))
+			.isPresent();
+	}
+
+	// The save's containers, and what they hold, go to the newcomer; so does
+	// the save's money.
+	private static void keepPartysBelongings (
+		final Property existing, final Property newcomer, final List<Property> retained) {
+
+		final ObjectPersistencePacket newcomerPacket = (ObjectPersistencePacket) newcomer.obj;
+		final ObjectPersistencePacket existingPacket = (ObjectPersistencePacket) existing.obj;
+		final Set<String> partys = partysBelongings(existingPacket);
+
+		final SingleDimensionalArrayProperty components =
+			((ComplexProperty) newcomer).<SingleDimensionalArrayProperty>findProperty("ComponentPackets").get();
+		for (final String container : PARTYS) {
+			final ComplexProperty saves = component(existing, container).get();
+			final ComplexProperty theirs = component(newcomer, container).get();
+			replace(components.items, theirs, saves);
+			replace(Arrays.asList(newcomerPacket.ComponentPackets), theirs.obj, saves.obj);
+		}
+
+		final Property money = currency(existing).get().<Property>findProperty("v").get();
+		Property.update(currency(newcomer).get(), "v", money.obj);
+
+		// The camping supplies sit beside the money, an int; a save that
+		// records none keeps none.
+		final Optional<Property> supplies = playerInventoryVariable(existing, "campingSupplies");
+		final Optional<Property> theirSupplies = playerInventoryVariable(newcomer, "campingSupplies");
+		if (supplies.isPresent() && theirSupplies.isPresent()) {
+			Property.update(theirSupplies.get(), supplies.get().obj);
+		}
+
+		for (final Property object : retained) {
+			final ObjectPersistencePacket packet = (ObjectPersistencePacket) object.obj;
+			if (packet.ObjectID != null && partys.contains(packet.ObjectID.toLowerCase())) {
+				Property.update(object, "Parent", newcomerPacket.ObjectName);
+			}
+		}
+	}
+
+	@SuppressWarnings("unchecked")
+	private static void replace (final List items, final Object was, final Object now) {
+		final int at = items.indexOf(was);
+		if (at >= 0) {
+			items.set(at, now);
+		}
+	}
+
+	private static Optional<ComplexProperty> component (final Property character, final String type) {
+		return ((ComplexProperty) character)
+			.<SingleDimensionalArrayProperty>findProperty("ComponentPackets")
+			.flatMap(components -> EKUtils.findSubComponent(components, type));
+	}
+
+	private static Optional<ComplexProperty> currency (final Property character) {
+		return component(character, "PlayerInventory")
+			.flatMap(inventory -> inventory.<DictionaryProperty>findProperty("Variables"))
+			.flatMap(variables -> variables.<ComplexProperty>findEntry("currencyTotalValue"));
+	}
+
+	private static Optional<Property> playerInventoryVariable (final Property character, final String name) {
+		return component(character, "PlayerInventory")
+			.flatMap(inventory -> inventory.<DictionaryProperty>findProperty("Variables"))
+			.flatMap(variables -> variables.<Property>findEntry(name));
+	}
+
+	private static boolean sharesReference (final Property property) {
+		if (property == null) {
+			return false;
+		}
+
+		if (property instanceof ReferenceTargetProperty
+			&& ((ReferenceTargetProperty) property).reference != null) {
+
+			return true;
+		}
+
+		if (property instanceof SingleDimensionalArrayProperty) {
+			for (final Object item : ((SingleDimensionalArrayProperty) property).items) {
+				if (item instanceof Property && sharesReference((Property) item)) {
+					return true;
+				}
+			}
+		}
+
+		if (property instanceof MultiDimensionalArrayProperty) {
+			for (final MultiDimensionalArrayProperty.MultiDimensionalArrayItem item
+				: ((MultiDimensionalArrayProperty) property).items) {
+
+				if (item != null && sharesReference(item.value)) {
+					return true;
+				}
+			}
+		}
+
+		if (property instanceof CollectionProperty) {
+			for (final Property item : ((CollectionProperty) property).items) {
+				if (sharesReference(item)) {
+					return true;
+				}
+			}
+		}
+
+		if (property instanceof DictionaryProperty) {
+			for (final Map.Entry<Property, Property> entry : ((DictionaryProperty) property).items) {
+				if (entry != null && (sharesReference(entry.getKey()) || sharesReference(entry.getValue()))) {
+					return true;
+				}
+			}
+		}
+
+		if (property instanceof ComplexProperty) {
+			for (final Property child : ((ComplexProperty) property).properties) {
+				if (sharesReference(child)) {
+					return true;
+				}
+			}
+		}
+
+		return false;
 	}
 
 	// The Player component's SessionID, on the main character's packet.

@@ -529,6 +529,126 @@ public class CharacterImporterTest extends TestHarness {
 		assertEquals(target, after);
 	}
 
+	// The stash, the quest items and the crafting materials hang off the main
+	// character alone, and the money is on their pack, but they are the
+	// party's. An overwrite took out everything the old Watcher owned, so a
+	// Watcher from another playthrough emptied the save's stash and quest
+	// items and brought their own playthrough's, and its money (2026-10-27).
+	// The save keeps what is the party's.
+	@Test
+	public void aWatcherFromAnotherPlaythroughLeavesTheSavesStashQuestItemsAndMoney ()
+		throws IOException
+		, URISyntaxException {
+
+		final String ring = "c4b7033d-c452-4946-a9ba-9998cb411201";
+		final File workingDir = tempDir();
+
+		// The character file comes from another playthrough, where the Watcher
+		// has another object name.
+		final File exported = new File(workingDir, "exported.chr");
+		assertTrue(new CharacterExporter(
+			resourceDirectory().getAbsolutePath(), PLAYER_GUID, exported.getAbsolutePath()).export());
+		final DeserializedPackets chr = deserialize(exported);
+		final String exportedName = findByObjectID(chr.getPackets(), PLAYER_GUID).ObjectName;
+		final String newcomerName = "Player_Newcomer";
+		for (final Property object : chr.getPackets()) {
+			final ObjectPersistencePacket packet = (ObjectPersistencePacket) object.obj;
+			if (exportedName.equals(packet.ObjectName)) {
+				assertTrue(Property.update(object, "ObjectName", newcomerName));
+			}
+
+			if (exportedName.equals(packet.Parent)) {
+				assertTrue(Property.update(object, "Parent", newcomerName));
+			}
+		}
+
+		final File chrFile = new File(workingDir, "newcomer.chr");
+		assertTrue(chrFile.createNewFile());
+		chr.reserialize(chrFile);
+
+		// Since then, this playthrough has put the ring in its stash and has
+		// other money.
+		final File saveDir = new File(workingDir, "target.savegame");
+		assertTrue(saveDir.mkdir());
+		FileUtils.copyFileToDirectory(new File(resourceDirectory(), "MobileObjects.save"), saveDir);
+		assertTrue(new uk.me.mantas.eternity.save.InventoryManager(saveDir).apply(
+			java.util.Collections.singletonList(new uk.me.mantas.eternity.save.InventoryManager.Change(
+				PLAYER_GUID, "PlayerInventory", ring, 1, PLAYER_GUID, "StashInventory", -1))));
+
+		final File mobileObjects = new File(saveDir, "MobileObjects.save");
+		final DeserializedPackets world = deserialize(mobileObjects);
+		assertTrue(Property.update(currencyProperty(world), "v", 4321f));
+		assertTrue(Property.update(campingSuppliesProperty(world), Integer.valueOf(4)));
+		world.replace(mobileObjects);
+
+		final DeserializedPackets before = deserialize(mobileObjects);
+		final ObjectPersistencePacket watcher = findByObjectID(before.getPackets(), PLAYER_GUID);
+		final List<String> stash = listed(watcher, "StashInventory");
+		final List<String> quest = listed(watcher, "QuestInventory");
+		final List<String> crafting = listed(watcher, "CraftingInventory");
+		assertTrue(stash.contains(ring));
+
+		final CharacterImporter importer =
+			new CharacterImporter(requestJSON(saveDir), chrFile.getAbsolutePath());
+		assertTrue(importer.overwriteCharacter());
+
+		final DeserializedPackets after =
+			deserialize(new File(importer.saveFile(), "MobileObjects.save"));
+		final ObjectPersistencePacket newcomer = findByObjectID(after.getPackets(), PLAYER_GUID);
+		assertEquals(newcomerName, newcomer.ObjectName);
+
+		assertEquals("the save's stash", stash, listed(newcomer, "StashInventory"));
+		assertEquals("the save's quest items", quest, listed(newcomer, "QuestInventory"));
+		assertEquals("the save's crafting materials", crafting, listed(newcomer, "CraftingInventory"));
+		for (final List<String> container : java.util.Arrays.asList(stash, quest, crafting)) {
+			for (final String id : container) {
+				assertEquals(id + " is held by the newcomer"
+					, newcomerName, findByObjectID(after.getPackets(), id).Parent);
+			}
+		}
+
+		assertEquals("the save's money", 4321f, (float) currencyProperty(after).findProperty("v")
+			.map(value -> ((Property) value).obj).get(), 0f);
+		// The camping supplies sit beside the money: the game showed the
+		// prologue's 0 in place of the save's 4 (2026-10-27).
+		assertEquals("the save's camping supplies", 4, campingSuppliesProperty(after).obj);
+
+		// The ring the file brings in the newcomer's pack is the file's own copy.
+		final List<String> pack = listed(newcomer, "PlayerInventory");
+		assertFalse(pack.contains(ring));
+		assertEquals(listed(findByObjectID(chr.getPackets(), PLAYER_GUID), "PlayerInventory").size()
+			, pack.size());
+
+		final java.util.Map<String, Long> seen = after.getPackets().stream()
+			.map(property -> ((ObjectPersistencePacket) property.obj).ObjectID.toLowerCase())
+			.collect(Collectors.groupingBy(id -> id, Collectors.counting()));
+		assertTrue("no ID twice: " + seen, seen.values().stream().allMatch(n -> n == 1));
+		assertEquals(after.getPackets().size(), (int) after.getCount().obj);
+	}
+
+	// The main character's money: PlayerInventory.currencyTotalValue.
+	private ComplexProperty currencyProperty (final DeserializedPackets world) {
+		return playerInventory(world).<ComplexProperty>findEntry("currencyTotalValue").get();
+	}
+
+	// PlayerInventory.campingSupplies, an int.
+	private Property campingSuppliesProperty (final DeserializedPackets world) {
+		return playerInventory(world).<Property>findEntry("campingSupplies").get();
+	}
+
+	private uk.me.mantas.eternity.serializer.properties.DictionaryProperty playerInventory (
+		final DeserializedPackets world) {
+
+		final Property player = world.getPackets().stream()
+			.filter(property -> PLAYER_GUID.equals(((ObjectPersistencePacket) property.obj).ObjectID))
+			.findFirst().get();
+		final ComplexProperty component = EKUtils.findSubComponent(
+			((ComplexProperty) player).<uk.me.mantas.eternity.serializer.properties.SingleDimensionalArrayProperty>
+				findProperty("ComponentPackets").get(), "PlayerInventory").get();
+		return component.<uk.me.mantas.eternity.serializer.properties.DictionaryProperty>
+			findProperty("Variables").get();
+	}
+
 	private Property sessionProperty (final DeserializedPackets world) {
 		final Property player = world.getPackets().stream()
 			.filter(property -> PLAYER_GUID.equals(((ObjectPersistencePacket) property.obj).ObjectID))

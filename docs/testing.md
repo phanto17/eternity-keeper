@@ -50,7 +50,10 @@ the achievements flag. How to do it again without surprises:
   that file too, not just the name that was copied in.
 - **The window is `PillarsOfEternity.exe`** for computer-use access; it has no
   Start-menu entry, so launch it with `Start-Process steam://rungameid/291650`
-  first. Close the editor before driving the game — its window comes to the
+  first. The access request takes only the full path,
+  `D:\Steam\steamapps\common\Pillars of Eternity\PillarsOfEternity.exe`: the
+  bare name, "Pillars of Eternity" and "PillarsOfEternity" are all reported
+  as not installed (2026-10-27). Close the editor before driving the game — its window comes to the
   front and takes the clicks. Scroll wheels barely move the game's lists; drag
   the scrollbar or click headers instead.
 - Native file dialogs the editor opens (export/import `.chr`) are answered with
@@ -124,7 +127,12 @@ the achievements flag. How to do it again without surprises:
   `TRANSITION TO EMPTY COMPLETE`. The untouched save does it too (loaded as a
   baseline on 2026-10-05 for exactly this), so it is not the editor's. When
   reading the log, tell the *unloading of the scene before* (it comes first,
-  right after `BEGIN LEVEL LOAD INITIATED`) from the load itself.
+  right after `BEGIN LEVEL LOAD INITIATED`) from the load itself. Quitting
+  to the main menu from the Caed Nua courtyard adds a second kind from the
+  same `OnDestroy` path, `StatusEffect.GetCurrentAppliedValue` (via
+  `get_CurrentAppliedValue`, from `ClearEffect`): the untouched Caed Nua
+  save logged it four times, the edited one twice (baseline of
+  2026-10-27).
 - **Where the General Goods Merchant stands**: the Great Hall
   (`AR_0604_Stronghold_Great_Hall`), in the east room the area map labels
   Treasury, a man in blue with a headwrap. `NPC_General_Goods_Merchant` at

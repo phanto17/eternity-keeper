@@ -142,8 +142,9 @@ public class ImportCharacter extends CefMessageRouterHandlerAdapter {
 			// against the directory it edits: the private copy, made now if
 			// this is the session's first edit.
 			final JSONObject json = new JSONObject(request);
-			working.history().begin(working.forEditing(
-				new File(json.getString("oldSave")), json.getBoolean("savedYet")));
+			final File save = working.forEditing(
+				new File(json.getString("oldSave")), json.getBoolean("savedYet"));
+			working.history().begin(save);
 			recording = true;
 
 			final boolean success = overwrite
@@ -162,7 +163,22 @@ public class ImportCharacter extends CefMessageRouterHandlerAdapter {
 					opener.with("historyStep", step);
 				}
 
-				opener.run();
+				try {
+					opener.run();
+				} catch (final RuntimeException | StackOverflowError e) {
+					// Written, and then not handed back: the page is told the
+					// import failed and goes on showing the save as it was, so
+					// the save goes back to that too (as SaveMutationHandler's).
+					if (step > 0) {
+						try {
+							working.history().undo(save, step);
+						} catch (final IOException undoing) {
+							logger.error("The import could not be taken back either: %s%n", undoing.getMessage());
+						}
+					}
+
+					throw e;
+				}
 			} else {
 				callback.failure(-1, "Character import failed.");
 			}

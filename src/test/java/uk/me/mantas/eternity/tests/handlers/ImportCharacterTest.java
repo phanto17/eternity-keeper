@@ -131,4 +131,36 @@ public class ImportCharacterTest extends TestHarness {
 		verify(undone, timeout(60000)).success(contains("\"characters\""));
 		assertArrayEquals(before, Files.readAllBytes(world.toPath()));
 	}
+
+	// Written, and then the save could not be handed back: the page is told
+	// the import failed and never learns of the step, so the import is taken
+	// back, as an Apply's is. It stayed, and the next Save wrote a character
+	// the page had never shown (2026-10-27).
+	@Test
+	public void anImportThatCannotBeHandedBackIsTakenBack () throws Exception {
+		final File resources = new File(getClass().getResource("/").toURI());
+		final File workingDir = EKUtils.createTempDir(PREFIX).get();
+		final File saveDir = new File(workingDir, "target.savegame");
+		assertTrue(saveDir.mkdir());
+		FileUtils.copyFileToDirectory(new File(resources, "MobileObjects.save"), saveDir);
+		final byte[] before = Files.readAllBytes(new File(saveDir, "MobileObjects.save").toPath());
+
+		final File chrFile = new File(workingDir, "companion.chr");
+		assertTrue(new CharacterExporter(
+			resources.getAbsolutePath(), COMPANION_GUID, chrFile.getAbsolutePath()).export());
+		mockSettings().json = new JSONObject();
+
+		final CefQueryCallback failing = mock(CefQueryCallback.class);
+		doThrow(new IllegalStateException("the reply could not be built"))
+			.when(failing).success(anyString());
+
+		new ImportCharacter().onQuery(mock(CefBrowser.class), 0, new JSONObject()
+			.put("oldSave", saveDir.getAbsolutePath()).put("savedYet", false)
+			.put("chrPath", chrFile.getAbsolutePath()).put("overwrite", true).toString()
+			, false, failing);
+
+		verify(failing, timeout(60000)).failure(anyInt(), anyString());
+		final File working = Environment.getInstance().state().workingSave().forReading(saveDir, false);
+		assertArrayEquals(before, Files.readAllBytes(new File(working, "MobileObjects.save").toPath()));
+	}
 }

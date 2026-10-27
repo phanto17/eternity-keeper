@@ -10,8 +10,9 @@
 # In the game: the load list files it under the newcomer's name, its
 # autosaves keep the Caed Nua playthrough's ID, the Watcher
 # in the party bar and on the character sheet is the newcomer (name,
-# portrait, race, class, level, pack), the companions are the Caed Nua
-# party's, and Player.log has no "Exception" and no "already exists" after the
+# portrait, race, class, level, pack), the companions, the stash, the quest
+# items, the money and the camping supplies are the Caed Nua party's, and
+# Player.log has no "Exception" and no "already exists" after the
 # load beyond the Caed Nua saves' own (docs/testing.md).
 import json, os, re, sys, threading, time, uuid, zipfile
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -53,6 +54,14 @@ def main():
     })())""" % (MAIN, D)))
 
 
+# What is the party's rather than the Watcher's: the stash, the money and the
+# camping supplies.
+def partys():
+    return json.loads(E("""JSON.stringify({currency: %s.currency, supplies: %s.campingSupplies,
+      stash: ((%s.inventory.stash || {}).items || []).map(function(i){
+        return (i.displayName || i.prefab) + (i.stackSize > 1 ? ' x' + i.stackSize : ''); })})""" % (D, D, D)))
+
+
 def party():
     return E("%s.characters.filter(function(c){ return !c.isMainCharacter && !c.isDead; })"
              ".map(function(c){ return c.name; })" % D)
@@ -81,6 +90,8 @@ open_save(page, TARGET)
 time.sleep(1.5)
 expect["target before"] = main()
 expect["target party"] = party()
+expect["target partys"] = partys()
+check("the Caed Nua stash is not empty", len(expect["target partys"]["stash"]) > 0, expect["target partys"])
 
 logged = os.path.getsize(LOG) if os.path.exists(LOG) else 0
 E("window.__imported = false; Eternity.GenericError.render({})")
@@ -115,6 +126,8 @@ want = {k: expect["exported"][k] for k in same}
 check("the main character is the one exported", same == want, [same, want])
 check("the companions are the Caed Nua party's", party() == expect["target party"],
       [party(), expect["target party"]])
+check("the stash, the money and the camping supplies are the Caed Nua party's", partys() == expect["target partys"],
+      [partys(), expect["target partys"]])
 
 # ---- Save ----------------------------------------------------------------------
 E("Eternity.Modifications.state.saveName = 'EK Watcher swap'; Eternity.Modifications.save()")
