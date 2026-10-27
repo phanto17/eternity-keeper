@@ -79,6 +79,9 @@ try:
     check("it says where they are kept", BACKUPS.lower() in
           page.eval("$('#backupsIntro').text()").lower().replace("/", "\\"),
           page.eval("$('#backupsIntro').text()"))
+    check("it says the limit is for each kind of copy",
+          "10 most recent of each kind" in page.eval("$('#backupsIntro').text()"),
+          page.eval("$('#backupsIntro').text()"))
     close(page)
 
     # ---- delete from the save list -----------------------------------------

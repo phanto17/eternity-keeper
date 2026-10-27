@@ -47,7 +47,7 @@ var Backups = function () {
 		var state = self.state;
 
 		self.html.backupsIntro.text('Before Eternity Keeper deletes, renames or replaces a save, '
-			+ 'it keeps a copy here. The ' + state.keep + ' most recent are kept'
+			+ 'it keeps a copy here. The ' + state.keep + ' most recent of each kind are kept'
 			+ (state.folder ? ', in ' + state.folder + '.' : '.'));
 
 		var list = self.html.backupsList.empty();

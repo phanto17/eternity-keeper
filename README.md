@@ -59,7 +59,7 @@ then load the result in the game. Works with the current Steam and GOG versions.
 > The downloads are not signed, so the first time you run one, Windows may say it protected your PC. Choose **More info**, then **Run anyway**.
 
 > [!IMPORTANT]
-> **Your saves are safe.** The editor never writes to the save you open, and before it deletes, renames or replaces a save it keeps a copy: **File → Backups…** puts any of the last ten back. Even so, keep a copy of `%USERPROFILE%\Saved Games\Pillars of Eternity` until you have loaded an edited save in the game.
+> **Your saves are safe.** The editor never writes to the save you open, and before it deletes, renames or replaces a save it keeps a copy: **File → Backups…** puts any recent one back. Even so, keep a copy of `%USERPROFILE%\Saved Games\Pillars of Eternity` until you have loaded an edited save in the game.
 
 ## Requirements
 

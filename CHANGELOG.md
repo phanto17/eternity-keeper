@@ -21,6 +21,11 @@
   and camping supplies; only the character is new.
 - An import that went wrong after it was written is now taken back, as every
   other change already was, instead of staying in the save unseen.
+- **Saving often could push out the backup of a deleted save.** Every Save
+  after the first backs up the file the one before it wrote, and File →
+  Backups kept ten copies in all, so ten Saves were enough to lose the copy
+  of a save you had deleted or renamed. It now keeps the ten most recent of
+  each kind: deleted, renamed and replaced by Save.
 
 ## 1.1.0-beta (2026-10-23)
 

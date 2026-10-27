@@ -37,7 +37,9 @@ import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.Date;
+import java.util.EnumMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.function.LongSupplier;
 
@@ -53,13 +55,13 @@ import static org.joox.JOOX.$;
  * <p>Each backup is a folder named for the moment it was taken, holding the
  * save under its own file name and a {@code backup.json} saying where it came
  * from and why. Saves run to tens of megabytes, so only the newest
- * {@link #KEEP} are kept.
+ * {@link #KEEP} of each reason are kept.
  */
 public class SaveBackups {
 	private static final Logger logger = Logger.getLogger(SaveBackups.class);
 	private static final String RECORD = "backup.json";
 
-	/** How many backups are kept; the oldest go first. */
+	/** How many backups of each reason are kept; the oldest go first. */
 	public static final int KEEP = 10;
 
 	/** Why a copy was taken. */
@@ -211,9 +213,17 @@ public class SaveBackups {
 		return folder;
 	}
 
+	// The limit is counted for each reason on its own: every Save after the
+	// first replaces the file the first one wrote, and with one count for all,
+	// ten of those pushed out the only copy of a save the player had deleted.
 	private void prune () {
-		final List<Backup> backups = list();
-		for (final Backup old : backups.subList(Math.min(keep, backups.size()), backups.size())) {
+		final Map<Reason, Integer> seen = new EnumMap<>(Reason.class);
+		for (final Backup old : list()) {
+			final int newer = seen.merge(old.reason, 1, Integer::sum);
+			if (newer <= keep) {
+				continue;
+			}
+
 			try {
 				FileUtils.deleteDirectory(old.file.getParentFile());
 			} catch (final IOException e) {

@@ -122,6 +122,31 @@ public class SaveBackupsTest extends TestHarness {
 		assertEquals("4 1 X.savegame", backups.list().get(0).file.getName());
 	}
 
+	// Every Save after the first in a session replaces the file the first one
+	// wrote, and backs it up. With one limit for every reason, ten Saves pushed
+	// out the copy a Delete had taken, and with it the only copy of a save the
+	// player had deleted (found by review, 2026-10-27). The limit is counted
+	// for each reason on its own.
+	@Test
+	public void repeatedSavesNeverPushOutTheCopyADeleteTook () throws IOException {
+		final SaveBackups backups = backups(3);
+		final Backup deleted = backups.backup(save("a 1 X.savegame", "deleted"), Reason.DELETE);
+		clock.addAndGet(1000);
+		final Backup renamed = backups.backup(save("b 1 X.savegame", "renamed"), Reason.RENAME);
+		clock.addAndGet(1000);
+
+		for (int i = 0; i < 11; i++) {
+			backups.backup(save("c 1 X.savegame", "written " + i), Reason.OVERWRITE);
+			clock.addAndGet(1000);
+		}
+
+		final List<Backup> kept = backups.list();
+		assertTrue("the deleted save's copy is kept", deleted.file.exists());
+		assertTrue("the renamed save's copy is kept", renamed.file.exists());
+		assertEquals(3, kept.stream().filter(b -> b.reason == Reason.OVERWRITE).count());
+		assertEquals(5, kept.size());
+	}
+
 	@Test
 	public void twoBackupsInTheSameMomentAreBothKept () throws IOException {
 		final SaveBackups backups = backups(10);

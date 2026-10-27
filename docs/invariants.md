@@ -66,9 +66,13 @@ has the short version.
     one in place, and Save deletes a same-named file to make room. Each calls
     `SaveBackups.forThisProcess().backup(file, Reason)` first and stops if the
     copy fails. Backups live in `<data>\backups\<timestamp>\` with a
-    `backup.json`; the newest `SaveBackups.KEEP` (10) are kept; `restore` never
-    replaces an existing file. Delete also accepts only a `.savegame` file now —
-    it used to delete any path the page sent (a folder, `settings.json`…).
+    `backup.json`; the newest `SaveBackups.KEEP` (10) **of each reason** are
+    kept; `restore` never replaces an existing file. Delete also accepts only a
+    `.savegame` file now — it used to delete any path the page sent (a folder,
+    `settings.json`…). The limit was once one count for all reasons: every Save
+    after the first replaces the file the first one wrote and backs it up, so
+    ten Saves pushed out the only copy of a save the player had deleted (found
+    by review, 2026-10-27; `SaveBackupsTest.repeatedSavesNeverPushOutTheCopyADeleteTook`).
 17. **A read that comes up short is never written.** On a file cut short or
     damaged part-way, `PacketDeserializer` used to hand back whatever came
     before the damage with nothing to say so, and every writer then wrote that
