@@ -28,6 +28,7 @@ import uk.me.mantas.eternity.game.StrongholdHireling;
 import uk.me.mantas.eternity.game.StrongholdPrisonerData;
 import uk.me.mantas.eternity.save.StrongholdManager;
 import uk.me.mantas.eternity.save.StrongholdManager.Change;
+import uk.me.mantas.eternity.serializer.WriteRefusedException;
 import uk.me.mantas.eternity.serializer.CSharpCollection;
 import uk.me.mantas.eternity.serializer.DeserializedPackets;
 import uk.me.mantas.eternity.serializer.PacketDeserializer;
@@ -230,15 +231,20 @@ public class HirelingsAndPrisonersTest extends TestHarness {
 	}
 
 	@Test
-	public void dismissingSomeoneWhoWasNeverHiredChangesNothing ()
+	public void dismissingSomeoneWhoWasNeverHiredIsRefused ()
 		throws URISyntaxException, IOException {
 
 		final File saveDir = setupSave();
 		final byte[] before =
 			FileUtils.readFileToByteArray(new File(saveDir, "MobileObjects.save"));
 
-		assertFalse(new StrongholdManager(saveDir).apply(Collections.singletonList(
-			Change.dismissHireling("b_brute_hireling"))));
+		try {
+			new StrongholdManager(saveDir).apply(Collections.singletonList(
+				Change.dismissHireling("b_brute_hireling")));
+			fail("someone who was never hired was dismissed");
+		} catch (final WriteRefusedException refused) {
+			assertTrue(refused.getMessage(), refused.getMessage().contains("b_brute_hireling"));
+		}
 
 		assertArrayEquals(before
 			, FileUtils.readFileToByteArray(new File(saveDir, "MobileObjects.save")));
@@ -264,12 +270,17 @@ public class HirelingsAndPrisonersTest extends TestHarness {
 	}
 
 	@Test
-	public void releasingSomeoneWhoIsNotImprisonedChangesNothing ()
+	public void releasingSomeoneWhoIsNotImprisonedIsRefused ()
 		throws URISyntaxException, IOException {
 
 		final File saveDir = setupSave();
-		assertFalse(new StrongholdManager(saveDir).apply(Collections.singletonList(
-			Change.releasePrisoner("b_someone_else_prisoner"))));
+		try {
+			new StrongholdManager(saveDir).apply(Collections.singletonList(
+				Change.releasePrisoner("b_someone_else_prisoner")));
+			fail("someone who is not imprisoned was released");
+		} catch (final WriteRefusedException refused) {
+			assertTrue(refused.getMessage(), refused.getMessage().contains("b_someone_else_prisoner"));
+		}
 
 		assertEquals(
 			Collections.singletonList("b_kestorik_prisoner")

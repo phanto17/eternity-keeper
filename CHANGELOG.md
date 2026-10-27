@@ -29,6 +29,8 @@
 - A change whose result could not be read back is now reported as not done
   and taken back. It used to stay in the save, and the page could take the
   error for the save itself.
+- A Stronghold Apply that the save could only partly take reported success.
+  It now goes in whole or not at all, and says which change was refused.
 
 ## 1.1.0-beta (2026-10-23)
 

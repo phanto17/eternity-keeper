@@ -26,6 +26,7 @@ import uk.me.mantas.eternity.game.ObjectPersistencePacket;
 import uk.me.mantas.eternity.game.StrongholdUpgrade;
 import uk.me.mantas.eternity.serializer.DeserializedPackets;
 import uk.me.mantas.eternity.serializer.TypePair;
+import uk.me.mantas.eternity.serializer.WriteRefusedException;
 import uk.me.mantas.eternity.serializer.properties.CollectionProperty;
 import uk.me.mantas.eternity.serializer.properties.ComplexProperty;
 import uk.me.mantas.eternity.serializer.properties.DictionaryProperty;
@@ -145,7 +146,12 @@ public class StrongholdManager {
 	}
 
 	/**
-	 * @return true when the save was changed and rewritten.
+	 * A batch goes in whole or not at all: one change the save cannot take
+	 * refuses the lot, and nothing is written.
+	 *
+	 * @return true when the save was changed and rewritten, false when every
+	 *         change was already so
+	 * @throws WriteRefusedException naming the change that was refused
 	 */
 	public boolean apply (final List<Change> changes) throws IOException {
 		if (changes == null || changes.isEmpty()) {
@@ -187,9 +193,8 @@ public class StrongholdManager {
 			}
 
 			if (!activated) {
-				logger.error(
-					"Refusing to edit a stronghold the player does not own yet.%n");
-				continue;
+				throw refused("Caed Nua is not the player's yet in this save, so its upgrades"
+					+ ", hirelings and prisoners cannot be changed.");
 			}
 
 			switch (change.kind) {
@@ -235,20 +240,20 @@ public class StrongholdManager {
 	private boolean buildUpgrade (
 		final DeserializedPackets packets
 		, final DictionaryProperty stronghold
-		, final String key) {
+		, final String key) throws WriteRefusedException {
 
 		final Optional<StrongholdCatalog.Upgrade> upgrade =
 			StrongholdCatalog.getInstance().lookup(key);
 
 		if (!upgrade.isPresent()) {
-			logger.error("No such buildable upgrade: '%s'.%n", key);
-			return false;
+			throw refused("There is no upgrade called '" + key + "' that the game can build.");
 		}
 
 		final Optional<StrongholdUpgrade.Type> type = upgrade.get().type();
 		final Optional<CollectionProperty> list = upgradeList(stronghold);
 		if (!type.isPresent() || !list.isPresent()) {
-			return false;
+			throw refused("The stronghold in this save has no list of upgrades to record '"
+				+ key + "' in.");
 		}
 
 		// HasUpgrade() guards the game's own call; without the same guard the
@@ -269,20 +274,20 @@ public class StrongholdManager {
 	private boolean destroyUpgrade (
 		final DeserializedPackets packets
 		, final DictionaryProperty stronghold
-		, final String key) {
+		, final String key) throws WriteRefusedException {
 
 		final Optional<StrongholdCatalog.Upgrade> upgrade =
 			StrongholdCatalog.getInstance().lookup(key);
 
 		if (!upgrade.isPresent()) {
-			logger.error("No such buildable upgrade: '%s'.%n", key);
-			return false;
+			throw refused("There is no upgrade called '" + key + "' that the game can build.");
 		}
 
 		final Optional<StrongholdUpgrade.Type> type = upgrade.get().type();
 		final Optional<CollectionProperty> list = upgradeList(stronghold);
 		if (!type.isPresent() || !list.isPresent()) {
-			return false;
+			throw refused("The stronghold in this save has no list of upgrades to record '"
+				+ key + "' in.");
 		}
 
 		boolean removed = false;
@@ -315,14 +320,13 @@ public class StrongholdManager {
 	private boolean dismissHireling (
 		final DeserializedPackets packets
 		, final DictionaryProperty stronghold
-		, final String hiredGlobal) {
+		, final String hiredGlobal) throws WriteRefusedException {
 
 		final Optional<Property> hireling =
 			removeEntry(stronghold, "m_hirelingsHired", "HiredGlobalVariableName", hiredGlobal);
 
 		if (!hireling.isPresent()) {
-			logger.error("No hireling '%s' to dismiss.%n", hiredGlobal);
-			return false;
+			throw refused("No hireling '" + hiredGlobal + "' is in this save's stronghold to dismiss.");
 		}
 
 		if (Boolean.TRUE.equals(field(hireling.get(), "Paid"))) {
@@ -341,14 +345,13 @@ public class StrongholdManager {
 	private boolean releasePrisoner (
 		final DeserializedPackets packets
 		, final DictionaryProperty stronghold
-		, final String global) {
+		, final String global) throws WriteRefusedException {
 
 		final Optional<Property> prisoner =
 			removeEntry(stronghold, "m_prisoners", "GlobalVariableName", global);
 
 		if (!prisoner.isPresent()) {
-			logger.error("No prisoner '%s' to release.%n", global);
-			return false;
+			throw refused("No prisoner '" + global + "' is in this save's stronghold to release.");
 		}
 
 		setGlobal(packets, global, 0);
@@ -438,13 +441,17 @@ public class StrongholdManager {
 		Property.update(entry.get(), ((Integer) entry.get().obj) + delta);
 	}
 
+	private static WriteRefusedException refused (final String why) {
+		return new WriteRefusedException(why + " Nothing was changed.");
+	}
+
 	private static boolean setEntry (
-		final DictionaryProperty stronghold, final String variable, final Object value) {
+		final DictionaryProperty stronghold, final String variable, final Object value)
+		throws WriteRefusedException {
 
 		final Optional<Property> entry = stronghold.findEntry(variable);
 		if (!entry.isPresent()) {
-			logger.error("Stronghold has no '%s' to set.%n", variable);
-			return false;
+			throw refused("The stronghold in this save has no '" + variable + "' to set.");
 		}
 
 		if (value.equals(entry.get().obj)) {

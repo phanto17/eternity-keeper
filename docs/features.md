@@ -260,6 +260,17 @@ the game.
   - `save/StrongholdCatalog` (reads `stronghold.json`), `save/StrongholdManager`,
     `handlers/UpdateStronghold`, `ui/js/StrongholdEditor.js`,
     `tools/gamedata/stronghold.py`.
+  - **An Apply goes in whole or not at all (2026-10-27).** A change the save
+    cannot take throws a `WriteRefusedException` naming it ("No prisoner 'x'
+    is in this save's stronghold to release. Nothing was changed."): an edit
+    on a keep that is not the player's yet, an upgrade the game never
+    configured, a missing list or variable, nobody of that name to dismiss or
+    release, and (in the handler) an unknown change kind. These used to be
+    logged and skipped while the rest of the batch was written and reported
+    as a success. A change that is already so (built, demolished, the same
+    number) is still a quiet no-op, and a batch of nothing but those still
+    returns `false`. `stronghold_people.py` sends a real refused batch through
+    the tab and checks the draft is kept.
   - **Hirelings can be dismissed and prisoners released (2026-09-21)**, as the
     game's own buttons do it: `StrongholdManager.Change.dismissHireling(global)`
     mirrors `DismissHireling` (entry out, `HiredGlobalVariableName` → 0, the

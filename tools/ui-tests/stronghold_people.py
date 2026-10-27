@@ -95,6 +95,38 @@ time.sleep(0.6)
 check("Revert clears a staged dismissal", E("$('#shHirelings .sh-person-staged').length") == 0
       and E("$('#shApply').prop('disabled')"))
 
+# ---- a batch the save cannot take goes in whole or not at all ----------------
+# The same dismissal, sent with a release of someone the dungeon does not hold.
+# The server used to skip that one, write the dismissal and report success.
+# The router's window.updateStronghold is read-only, so the extra change goes
+# in as the tab writes its request: once, then JSON.stringify is itself again.
+E("""$('#shHirelings .sh-person').filter(function(){
+  return $(this).find('.sh-person-name').text() === 'Crucible Knight'; }).find('.sh-person-btn').click()""")
+time.sleep(0.5)
+E("""window.__stringify = JSON.stringify;
+  JSON.stringify = function (value) {
+    if (value && value.oldSave && $.isArray(value.changes)) {
+      JSON.stringify = window.__stringify;
+      value = $.extend({}, value, {changes: value.changes.concat(
+        [{kind: 'releasePrisoner', name: 'b_nobody_prisoner'}])});
+    }
+    return window.__stringify.apply(JSON, [value].concat([].slice.call(arguments, 1)));
+  }""")
+E("$('#shApply').click()")
+try:
+    page.wait_for("/Nothing was changed/.test($('#shStatus').text())", 300, "the refused batch")
+finally:
+    E("JSON.stringify = window.__stringify")
+time.sleep(0.5)
+status = E("$('#shStatus').text()")
+check("a batch with a refused change says which", "b_nobody_prisoner" in status, status)
+check("and the dismissal in it did not go in either", len(E("%s.stronghold.hirelings" % D)) == 3
+      and E(PRESTIGE) == prestige, "%s hirelings, prestige %s"
+      % (len(E("%s.stronghold.hirelings" % D)), E(PRESTIGE)))
+check("the draft is kept to try again", E("$('#shHirelings .sh-person-staged').length") == 1)
+E("$('#shRevert').click()")
+time.sleep(0.6)
+
 # ---- dismissing for real ------------------------------------------------------
 E("""$('#shHirelings .sh-person').filter(function(){
   return $(this).find('.sh-person-name').text() === 'Crucible Knight'; }).find('.sh-person-btn').click()""")

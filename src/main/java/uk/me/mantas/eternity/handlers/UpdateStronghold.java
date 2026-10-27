@@ -20,7 +20,6 @@ package uk.me.mantas.eternity.handlers;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
-import uk.me.mantas.eternity.Logger;
 import uk.me.mantas.eternity.save.StrongholdManager;
 import uk.me.mantas.eternity.save.StrongholdManager.Change;
 
@@ -39,7 +38,6 @@ import java.util.List;
 // its own Prestige and Security on top of whatever the numbers are at that
 // moment, exactly as Stronghold.CompleteBuildingUpgrade would have.
 public class UpdateStronghold extends SaveMutationHandler {
-	private static final Logger logger = Logger.getLogger(UpdateStronghold.class);
 
 	@Override
 	protected String mutate (final File save, final JSONObject request) throws IOException {
@@ -81,8 +79,8 @@ public class UpdateStronghold extends SaveMutationHandler {
 					break;
 
 				default:
-					logger.error("Unknown stronghold change kind '%s'.%n", kind);
-					break;
+					// Skipped, the rest would go in and the page be told it all had.
+					return "There is no stronghold change called '" + kind + "'. Nothing was changed.";
 			}
 		}
 

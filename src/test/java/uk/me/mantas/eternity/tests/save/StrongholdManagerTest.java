@@ -30,6 +30,7 @@ import uk.me.mantas.eternity.save.StrongholdManager;
 import uk.me.mantas.eternity.serializer.CSharpCollection;
 import uk.me.mantas.eternity.serializer.DeserializedPackets;
 import uk.me.mantas.eternity.serializer.PacketDeserializer;
+import uk.me.mantas.eternity.serializer.WriteRefusedException;
 import uk.me.mantas.eternity.serializer.properties.Property;
 import uk.me.mantas.eternity.tests.TestHarness;
 
@@ -169,8 +170,12 @@ public class StrongholdManagerTest extends TestHarness {
 		final StrongholdManager manager = new StrongholdManager(saveDir);
 
 		assertFalse(manager.isActivated());
-		assertFalse(manager.apply(Arrays.asList(
-			StrongholdManager.Change.addUpgrade("MainKeep"))));
+		try {
+			manager.apply(Arrays.asList(StrongholdManager.Change.addUpgrade("MainKeep")));
+			fail("a stronghold nobody owns was edited");
+		} catch (final WriteRefusedException refused) {
+			assertTrue(refused.getMessage(), refused.getMessage().contains("not the player's yet"));
+		}
 
 		assertEquals(0, built(stronghold(saveDir)).size());
 	}
@@ -283,10 +288,42 @@ public class StrongholdManagerTest extends TestHarness {
 		assertTrue(new StrongholdManager(saveDir).apply(Arrays.asList(
 			StrongholdManager.Change.activate(true))));
 
-		assertFalse(new StrongholdManager(saveDir).apply(Arrays.asList(
-			StrongholdManager.Change.addUpgrade("BeastVault"))));
+		try {
+			new StrongholdManager(saveDir).apply(Arrays.asList(
+				StrongholdManager.Change.addUpgrade("BeastVault")));
+			fail("an upgrade the game never configured was built");
+		} catch (final WriteRefusedException refused) {
+			assertTrue(refused.getMessage(), refused.getMessage().contains("BeastVault"));
+		}
 
 		assertEquals(0, built(stronghold(saveDir)).size());
+	}
+
+	// One refused change in a batch was logged and skipped, the rest were
+	// written, and the page was told the whole Apply had gone in (found by
+	// review, 2026-10-27). A batch goes in whole or not at all.
+	@Test
+	public void aBatchWithARefusedChangeWritesNothingAndSaysWhich ()
+		throws URISyntaxException, IOException {
+
+		final File saveDir = setupSave();
+		assertTrue(new StrongholdManager(saveDir).apply(Arrays.asList(
+			StrongholdManager.Change.activate(true))));
+		final byte[] before =
+			FileUtils.readFileToByteArray(new File(saveDir, "MobileObjects.save"));
+
+		try {
+			new StrongholdManager(saveDir).apply(Arrays.asList(
+				StrongholdManager.Change.addUpgrade("EasternBarbican")
+				, StrongholdManager.Change.addUpgrade("BeastVault")));
+			fail("a batch with a refused change was applied");
+		} catch (final WriteRefusedException refused) {
+			assertTrue(refused.getMessage(), refused.getMessage().contains("BeastVault"));
+			assertTrue(refused.getMessage(), refused.getMessage().contains("Nothing was changed"));
+		}
+
+		assertArrayEquals(before
+			, FileUtils.readFileToByteArray(new File(saveDir, "MobileObjects.save")));
 	}
 
 	@Test

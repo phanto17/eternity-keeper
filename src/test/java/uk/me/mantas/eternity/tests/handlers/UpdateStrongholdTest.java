@@ -36,14 +36,14 @@ import java.net.URISyntaxException;
 import java.util.Optional;
 
 import static org.junit.Assert.assertTrue;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.*;
 
 public class UpdateStrongholdTest extends TestHarness {
-	@Test
-	public void dismissAndReleaseComeBackAsTheReopenedKeep ()
-		throws IOException, URISyntaxException {
-
+	/** A save with a taken Caed Nua: four hirelings and Kestorik in the cells. */
+	private File keep () throws IOException, URISyntaxException {
 		final File resources = new File(getClass().getResource("/").toURI());
 		final Optional<File> workingDir = EKUtils.createTempDir(PREFIX);
 		assertTrue(workingDir.isPresent());
@@ -55,7 +55,54 @@ public class UpdateStrongholdTest extends TestHarness {
 
 		final Settings mockSettings = mockSettings();
 		mockSettings.json = new JSONObject();
+		return saveDir;
+	}
 
+	private static CefQueryCallback apply (final File saveDir, final JSONArray changes) {
+		final JSONObject request = new JSONObject()
+			.put("oldSave", saveDir.getAbsolutePath())
+			.put("savedYet", false)
+			.put("changes", changes);
+
+		final CefQueryCallback callback = mock(CefQueryCallback.class);
+		new UpdateStronghold().onQuery(mock(CefBrowser.class), 0, request.toString(), false, callback);
+		return callback;
+	}
+
+	// One change the save could not take was logged and skipped, the rest
+	// went in, and the page was told the Apply had worked (found by review,
+	// 2026-10-27). The page is told which change, and nothing goes in.
+	@Test
+	public void aBatchWithARefusedChangeIsRefusedInTheManagersWords ()
+		throws IOException, URISyntaxException {
+
+		final File saveDir = keep();
+		final CefQueryCallback callback = apply(saveDir, new JSONArray()
+			.put(new JSONObject().put("kind", "dismissHireling").put("name", "b_crucible_hireling"))
+			.put(new JSONObject().put("kind", "releasePrisoner").put("name", "b_nobody_prisoner")));
+
+		verify(callback, timeout(60000)).failure(anyInt(), argThat(message ->
+			message.contains("b_nobody_prisoner") && message.contains("Nothing was changed")));
+		verify(callback, never()).success(anyString());
+	}
+
+	@Test
+	public void aChangeOfAKindNobodyKnowsIsRefused () throws IOException, URISyntaxException {
+		final File saveDir = keep();
+		final CefQueryCallback callback = apply(saveDir, new JSONArray()
+			.put(new JSONObject().put("kind", "dismissHireling").put("name", "b_crucible_hireling"))
+			.put(new JSONObject().put("kind", "razeTheKeep").put("name", "")));
+
+		verify(callback, timeout(60000)).failure(anyInt(), argThat(message ->
+			message.contains("razeTheKeep") && message.contains("Nothing was changed")));
+		verify(callback, never()).success(anyString());
+	}
+
+	@Test
+	public void dismissAndReleaseComeBackAsTheReopenedKeep ()
+		throws IOException, URISyntaxException {
+
+		final File saveDir = keep();
 		final JSONObject request = new JSONObject()
 			.put("oldSave", saveDir.getAbsolutePath())
 			.put("savedYet", false)
