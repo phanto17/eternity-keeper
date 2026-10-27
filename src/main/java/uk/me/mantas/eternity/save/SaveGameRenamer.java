@@ -20,16 +20,22 @@
 package uk.me.mantas.eternity.save;
 
 import net.lingala.zip4j.ZipFile;
+import org.apache.commons.io.FileUtils;
+import uk.me.mantas.eternity.EKUtils;
 
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.nio.file.AtomicMoveNotSupportedException;
+import java.nio.file.Files;
+import java.nio.file.StandardCopyOption;
 
 /**
  * Changes a save's user-visible name (the UserSaveName inside saveinfo.xml)
  * both in the extracted working copy and inside the original .savegame
- * archive on disk. The archive file itself keeps its name; the game reads
- * the display name from saveinfo.xml.
+ * archive on disk. The archive keeps its file name; the game reads the
+ * display name from saveinfo.xml. The archive is replaced whole, never edited
+ * in place, and a rename that fails changes neither copy.
  */
 public class SaveGameRenamer {
 	private final File saveArchive;
@@ -51,15 +57,43 @@ public class SaveGameRenamer {
 	}
 
 	public void rename (final String newUserSaveName) throws IOException {
-		// This rewrites the player's own file in place, so it is copied first,
-		// and a save that cannot be copied is not touched.
+		// This replaces the player's own file, so it is copied first, and a
+		// save that cannot be copied is not touched.
 		SaveBackups.forThisProcess().backup(saveArchive, SaveBackups.Reason.RENAME);
 
-		SaveGameInfo.updateSaveInfo(extractedDirectory, newUserSaveName);
+		// The new saveinfo.xml is made apart and put into a copy of the file
+		// beside it; only a finished copy replaces the file, and only then
+		// does the working copy take the name. Taking saveinfo.xml out of the
+		// file itself and then adding the new one left a save without it if
+		// the second step failed, and a working copy named for a rename that
+		// never happened if the file could not be changed at all.
+		final File staging = EKUtils.createTempDir("EK-rename")
+			.orElseThrow(() -> new IOException("Could not make a folder to rename the save in."));
+		final File directory = saveArchive.getAbsoluteFile().getParentFile();
+		final File renaming = File.createTempFile(saveArchive.getName() + ".", ".renaming", directory);
 
-		final File saveinfo = new File(extractedDirectory, "saveinfo.xml");
-		final ZipFile archive = new ZipFile(saveArchive);
-		archive.removeFile("saveinfo.xml");
-		archive.addFile(saveinfo);
+		try {
+			final File saveinfo = new File(staging, "saveinfo.xml");
+			FileUtils.copyFile(new File(extractedDirectory, "saveinfo.xml"), saveinfo);
+			SaveGameInfo.updateSaveInfo(staging, newUserSaveName);
+
+			FileUtils.copyFile(saveArchive, renaming);
+			new ZipFile(renaming).addFile(saveinfo);
+
+			try {
+				Files.move(renaming.toPath(), saveArchive.toPath()
+					, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+			} catch (final AtomicMoveNotSupportedException e) {
+				Files.move(renaming.toPath(), saveArchive.toPath(), StandardCopyOption.REPLACE_EXISTING);
+			}
+
+			FileUtils.copyFile(saveinfo, new File(extractedDirectory, "saveinfo.xml"));
+		} finally {
+			if (renaming.exists() && !renaming.delete()) {
+				renaming.deleteOnExit();
+			}
+
+			FileUtils.deleteQuietly(staging);
+		}
 	}
 }

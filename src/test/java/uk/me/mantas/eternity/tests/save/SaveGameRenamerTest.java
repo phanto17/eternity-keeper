@@ -34,6 +34,7 @@ import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.net.URISyntaxException;
+import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -109,6 +110,86 @@ public class SaveGameRenamerTest extends TestHarness {
 		assertEquals("Start", backups.get(0).userSaveName);
 		assertEquals(archive.getCanonicalFile(), backups.get(0).original);
 		assertArrayEquals(before, FileUtils.readFileToByteArray(backups.get(0).file));
+	}
+
+	// Renaming took saveinfo.xml out of the player's own file and then put the
+	// new one in: a failure in between left a save with no saveinfo.xml
+	// (found by review, 2026-10-27). The new file is made beside it and moved
+	// over it whole. A hard link still to the old file shows which happened:
+	// an edit in place changes what it sees, a replacement does not.
+	@Test
+	public void theOriginalIsReplacedWholeNotEditedInPlace () throws URISyntaxException, IOException {
+		final File workingDir = EKUtils.createTempDir(PREFIX).get();
+		final File fixture = new File(
+			getClass().getResource("/ChangesSaverTest/id 0 Encampment.savegame").toURI());
+		final File extracted = new File(workingDir, "extracted.savegame");
+		FileUtils.copyDirectory(fixture, extracted);
+
+		final File archive = new File(workingDir, "abc 7 Encampment.savegame");
+		new ZipFile(archive).addFiles(new ArrayList<>(Arrays.asList(extracted.listFiles())));
+		final byte[] before = FileUtils.readFileToByteArray(archive);
+		final File link = new File(workingDir, "link to the old file");
+		Files.createLink(link.toPath(), archive.toPath());
+
+		new SaveGameRenamer(archive.getAbsolutePath(), extracted.getAbsolutePath()).rename(NEW_NAME);
+
+		assertArrayEquals("the old file was never written to", before, FileUtils.readFileToByteArray(link));
+		assertEquals("the same entries, saveinfo.xml once", entries(link), entries(archive));
+		final File reExtracted = new File(workingDir, "reextracted");
+		new ZipFile(archive).extractAll(reExtracted.getAbsolutePath());
+		assertEquals(NEW_NAME, userSaveName(new File(reExtracted, "saveinfo.xml")));
+		assertEquals("nothing is left beside it"
+			, new ArrayList<>(Arrays.asList("abc 7 Encampment.savegame", "extracted.savegame"
+				, "link to the old file", "reextracted"))
+			, sortedNames(workingDir));
+	}
+
+	// The new name went into the working copy first and the player's file
+	// second, so a rename that failed on the file left the two disagreeing:
+	// the page went on with a name the save on disk never had. A rename that
+	// fails changes neither.
+	@Test
+	public void aRenameThatFailsChangesNeitherCopy () throws URISyntaxException, IOException {
+		final File workingDir = EKUtils.createTempDir(PREFIX).get();
+		final File fixture = new File(
+			getClass().getResource("/ChangesSaverTest/id 0 Encampment.savegame").toURI());
+		final File extracted = new File(workingDir, "extracted.savegame");
+		FileUtils.copyDirectory(fixture, extracted);
+		final byte[] saveinfo = FileUtils.readFileToByteArray(new File(extracted, "saveinfo.xml"));
+
+		final File archive = new File(workingDir, "abc 7 Encampment.savegame");
+		FileUtils.writeStringToFile(archive, "damaged: not a zip at all", "UTF-8");
+		final byte[] before = FileUtils.readFileToByteArray(archive);
+
+		try {
+			new SaveGameRenamer(archive.getAbsolutePath(), extracted.getAbsolutePath()).rename(NEW_NAME);
+			fail("a save that is not a zip was renamed");
+		} catch (final IOException expected) {
+			// Refused; what matters is what it left.
+		}
+
+		assertArrayEquals(before, FileUtils.readFileToByteArray(archive));
+		assertArrayEquals("the working copy keeps its name"
+			, saveinfo, FileUtils.readFileToByteArray(new File(extracted, "saveinfo.xml")));
+		assertEquals("nothing is left beside it"
+			, new ArrayList<>(Arrays.asList("abc 7 Encampment.savegame", "extracted.savegame"))
+			, sortedNames(workingDir));
+	}
+
+	private static List<String> entries (final File zip) throws IOException {
+		final List<String> names = new ArrayList<>();
+		for (final net.lingala.zip4j.model.FileHeader header : new ZipFile(zip).getFileHeaders()) {
+			names.add(header.getFileName());
+		}
+
+		java.util.Collections.sort(names);
+		return names;
+	}
+
+	private static List<String> sortedNames (final File directory) {
+		final List<String> names = new ArrayList<>(Arrays.asList(directory.list()));
+		java.util.Collections.sort(names);
+		return names;
 	}
 
 	@Test(expected = FileNotFoundException.class)

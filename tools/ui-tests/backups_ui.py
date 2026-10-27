@@ -161,6 +161,15 @@ try:
     check("a rename is copied first too", len(found) == 2 and
           "before it was renamed" in found[0]["details"], found[:1])
     close(page)
+    # The file is replaced whole by a finished copy made beside it.
+    import zipfile
+    with zipfile.ZipFile(copy) as renamed:
+        infos = [n for n in renamed.namelist() if n == "saveinfo.xml"]
+        named = "Backups test, renamed" in renamed.read("saveinfo.xml").decode("utf-8-sig")
+    check("the renamed file holds saveinfo.xml once, with the new name",
+          len(infos) == 1 and named, infos)
+    check("nothing is left beside it", not [n for n in os.listdir(SAVES) if ".renaming" in n],
+          [n for n in os.listdir(SAVES) if ".renaming" in n])
 finally:
     if os.path.exists(copy):
         os.remove(copy)

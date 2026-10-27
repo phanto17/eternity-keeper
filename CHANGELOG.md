@@ -31,6 +31,8 @@
   error for the save itself.
 - A Stronghold Apply that the save could only partly take reported success.
   It now goes in whole or not at all, and says which change was refused.
+- Renaming a save replaces the file whole instead of editing it in place, so
+  a rename that fails part of the way leaves the save as it was.
 
 ## 1.1.0-beta (2026-10-23)
 

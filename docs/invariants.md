@@ -73,6 +73,14 @@ has the short version.
     after the first replaces the file the first one wrote and backs it up, so
     ten Saves pushed out the only copy of a save the player had deleted (found
     by review, 2026-10-27; `SaveBackupsTest.repeatedSavesNeverPushOutTheCopyADeleteTook`).
+    Rename no longer edits the file in place: it took `saveinfo.xml` out and
+    then added the new one, so a failure between the two left a save without
+    it, and the working copy took the new name before the file did. It now
+    builds the new `saveinfo.xml` apart, puts it into a `.renaming` copy
+    beside the save, moves that over the save whole, and only then updates
+    the working copy (same review; `SaveGameRenamerTest`; a renamed Caed
+    Nua save showed its new name in the game's load list and loaded with
+    only the baseline exceptions, 2026-10-27).
 17. **A read that comes up short is never written.** On a file cut short or
     damaged part-way, `PacketDeserializer` used to hand back whatever came
     before the damage with nothing to say so, and every writer then wrote that
