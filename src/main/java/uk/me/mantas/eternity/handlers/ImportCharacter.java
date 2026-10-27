@@ -164,19 +164,13 @@ public class ImportCharacter extends CefMessageRouterHandlerAdapter {
 				}
 
 				try {
-					opener.run();
+					opener.reopen();
+				} catch (final SavedGameOpener.Unreadable e) {
+					logger.error("Reading %s back after the import failed: %s%n", save.getAbsolutePath(), e.getMessage());
+					takeBack(working, save, step);
+					callback.failure(-1, e.takenBack());
 				} catch (final RuntimeException | StackOverflowError e) {
-					// Written, and then not handed back: the page is told the
-					// import failed and goes on showing the save as it was, so
-					// the save goes back to that too (as SaveMutationHandler's).
-					if (step > 0) {
-						try {
-							working.history().undo(save, step);
-						} catch (final IOException undoing) {
-							logger.error("The import could not be taken back either: %s%n", undoing.getMessage());
-						}
-					}
-
+					takeBack(working, save, step);
 					throw e;
 				}
 			} else {
@@ -201,6 +195,19 @@ public class ImportCharacter extends CefMessageRouterHandlerAdapter {
 			// Refused or failed: whatever it wrote goes back.
 			if (recording) {
 				working.history().abort();
+			}
+		}
+	}
+
+	// Written, and then not handed back: the page is told the import failed
+	// and goes on showing the save as it was, so the save goes back to that
+	// too (as SaveMutationHandler's).
+	private static void takeBack (final WorkingSave working, final File save, final long step) {
+		if (step > 0) {
+			try {
+				working.history().undo(save, step);
+			} catch (final IOException undoing) {
+				logger.error("The import could not be taken back either: %s%n", undoing.getMessage());
 			}
 		}
 	}

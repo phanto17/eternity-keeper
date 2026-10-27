@@ -200,6 +200,13 @@ has the short version.
     of that lifecycle and had no undo: an import that could not be handed
     back stayed, and the next Save wrote a character the page never showed
     (found by review, 2026-10-27; `anImportThatCannotBeHandedBackIsTakenBack`).
+    A writer reopens with `SavedGameOpener.reopen()`, which throws
+    `Unreadable` instead of answering; the writer takes its step back and
+    answers `failure`. `run()` (Open) answers the error codes itself. The
+    opener used to answer an unreadable reopen as a *success* carrying
+    `{"error": "DESERIALIZATION_ERR"}`, so the edit stayed and most tabs
+    adopted the error object as the save (same review;
+    `anEditThatCannotBeReadBackIsAFailureAndIsTakenBack`).
 23. **The folder the save list unpacked holds only a tile's eight files**
     (`saveinfo.xml`, `screenshot.png`, `0.png`...`5.png`) until the save is
     wanted. `environment/UnpackedSaves.complete(folder)` unpacks the rest --

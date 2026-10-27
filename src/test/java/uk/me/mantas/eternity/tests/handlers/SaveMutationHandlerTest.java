@@ -83,6 +83,7 @@ public class SaveMutationHandlerTest extends TestHarness {
 		IOException throwing = null;
 		RuntimeException failing = null;
 		String marker = null;
+		boolean unreadable = false;
 
 		@Override
 		protected String mutate (final File save, final JSONObject request) throws IOException {
@@ -98,7 +99,7 @@ public class SaveMutationHandlerTest extends TestHarness {
 				FileUtils.writeStringToFile(new File(save, marker), "edit", "UTF-8");
 			}
 
-			if (failing != null) {
+			if (failing != null || unreadable) {
 				// Part of the way through, as a bug would be: one file written,
 				// the way every writer writes one (invariant 20) -- kept for
 				// undo, then a new file moved over it.
@@ -107,7 +108,9 @@ public class SaveMutationHandlerTest extends TestHarness {
 				Environment.getInstance().state().workingSave().history().keep(world);
 				FileUtils.writeStringToFile(writing, "half an edit", "UTF-8");
 				Files.move(writing.toPath(), world.toPath(), StandardCopyOption.REPLACE_EXISTING);
-				throw failing;
+				if (failing != null) {
+					throw failing;
+				}
 			}
 
 			return problem;
@@ -337,6 +340,31 @@ public class SaveMutationHandlerTest extends TestHarness {
 		assertEquals(refusal.getMessage(), message.getValue());
 		assertTrue(message.getValue(), message.getValue().contains("nothing was written"));
 		verify(callback, never()).success(anyString());
+	}
+
+	// Written, and then nothing of it could be read back. The opener used to
+	// answer that as a success carrying {"error": ...}, which the page adopted
+	// as if it were the save, and the edit stayed in the working save (found
+	// by review, 2026-10-27).
+	@Test
+	public void anEditThatCannotBeReadBackIsAFailureAndIsTakenBack () throws Exception {
+		final File save = workingSave();
+		final Probe probe = new Probe();
+		probe.unreadable = true;
+		final CefQueryCallback callback = mock(CefQueryCallback.class);
+
+		send(probe, request(save, false), callback);
+
+		verify(callback, timeout(60000)).failure(anyInt()
+			, argThat(message -> message.contains("could not be read back")));
+		verify(callback, never()).success(anyString());
+
+		final File edited = probe.sawSave.get();
+		assertArrayEquals("what it had written is put back"
+			, FileUtils.readFileToByteArray(new File(save, "MobileObjects.save"))
+			, FileUtils.readFileToByteArray(new File(edited, "MobileObjects.save")));
+		assertTrue("and nothing is left to undo"
+			, Environment.getInstance().state().workingSave().history().undoable().isEmpty());
 	}
 
 	@Test

@@ -26,6 +26,9 @@
   Backups kept ten copies in all, so ten Saves were enough to lose the copy
   of a save you had deleted or renamed. It now keeps the ten most recent of
   each kind: deleted, renamed and replaced by Save.
+- A change whose result could not be read back is now reported as not done
+  and taken back. It used to stay in the save, and the page could take the
+  error for the save itself.
 
 ## 1.1.0-beta (2026-10-23)
 

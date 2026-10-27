@@ -163,21 +163,28 @@ public abstract class SaveMutationHandler extends CefMessageRouterHandlerAdapter
 		}
 
 		try {
-			opener.run();
+			opener.reopen();
+		} catch (final SavedGameOpener.Unreadable e) {
+			logger.error("Reading %s back after editing it failed: %s%n", save.getAbsolutePath(), e.getMessage());
+			takeBack(history, save, step);
+			callback.failure(-1, e.takenBack());
 		} catch (final RuntimeException | StackOverflowError e) {
-			// Written, and then not readable back. The page is told the edit
-			// was not made and goes on showing the save as it was, so the
-			// save goes back to that too: its next edit would otherwise be
-			// worked out against a save the page has never seen.
-			if (step > 0) {
-				try {
-					history.undo(save, step);
-				} catch (final IOException undoing) {
-					logger.error("The edit could not be taken back either: %s%n", undoing.getMessage());
-				}
-			}
-
+			takeBack(history, save, step);
 			throw e;
+		}
+	}
+
+	// Written, and then not readable back. The page is told the edit was not
+	// made and goes on showing the save as it was, so the save goes back to
+	// that too: its next edit would otherwise be worked out against a save the
+	// page has never seen.
+	private void takeBack (final EditHistory history, final File save, final long step) {
+		if (step > 0) {
+			try {
+				history.undo(save, step);
+			} catch (final IOException undoing) {
+				logger.error("The edit could not be taken back either: %s%n", undoing.getMessage());
+			}
 		}
 	}
 }

@@ -737,41 +737,64 @@ public class SavedGameOpenerTest extends TestHarness {
 		return mockDeserializer;
 	}
 
+	/** A save folder holding a MobileObjects.save, whatever is in it. */
+	private File saveFolder () throws IOException {
+		final File folder = EKUtils.createTempDir(PREFIX).get();
+		FileUtils.writeStringToFile(new File(folder, "MobileObjects.save"), "unread", "UTF-8");
+		return folder;
+	}
+
+	// Opening answers an unreadable save with the error, and with nothing
+	// after it: it used to go on and send an empty save as well.
 	@Test
-	public void deserializeTestDeserializationError () throws FileNotFoundException {
+	public void deserializeTestDeserializationError () throws IOException {
 		final Environment mockEnvironment = mockEnvironment();
 		final PacketDeserializer mockDeserializer = mockDeserializer(mockEnvironment);
-		final File mockMobileObjectsFile = mock(File.class);
 		final CefQueryCallback mockCallback = mock(CefQueryCallback.class);
 
 		when(mockDeserializer.deserializeEvenIfShort()).thenReturn(Optional.empty());
-		when(mockMobileObjectsFile.getAbsolutePath()).thenReturn("404");
 
-		final SavedGameOpener savedGameOpener = new SavedGameOpener("404", mockCallback);
-		final ExposedClass exposedOpener = expose(savedGameOpener);
-		exposedOpener.call("deserialize", mockMobileObjectsFile);
+		new SavedGameOpener(saveFolder().getAbsolutePath(), mockCallback).run();
 
 		verify(mockCallback).success(DESERIALIZATION_ERR);
+		verifyNoMoreInteractions(mockCallback);
 	}
 
 	@Test
-	public void deserializeTestThrowsException () throws FileNotFoundException {
+	public void deserializeTestThrowsException () throws IOException {
 		final Environment mockEnvironment = mockEnvironment();
 		final PacketDeserializerFactory mockFactory = mock(PacketDeserializerFactory.class);
-		final File mockMobileObjectsFile = mock(File.class);
 		final CefQueryCallback mockCallback = mock(CefQueryCallback.class);
 
 		// Reading tolerates a short file, so the one thing left to throw is
 		// finding the file at all.
 		when(mockEnvironment.factory().packetDeserializer()).thenReturn(mockFactory);
 		when(mockFactory.forFile(any(File.class))).thenThrow(new FileNotFoundException());
-		when(mockMobileObjectsFile.getAbsolutePath()).thenReturn("404");
 
-		final SavedGameOpener savedGameOpener = new SavedGameOpener("404", mockCallback);
-		final ExposedClass exposedOpener = expose(savedGameOpener);
-		exposedOpener.call("deserialize", mockMobileObjectsFile);
+		new SavedGameOpener(saveFolder().getAbsolutePath(), mockCallback).run();
 
 		verify(mockCallback).success(DESERIALIZATION_ERR);
+		verifyNoMoreInteractions(mockCallback);
+	}
+
+	// A writer reopening the save it has just edited is not answered for: it
+	// is told, so it can take the edit back before it answers.
+	@Test
+	public void reopeningAnUnreadableSaveAnswersNothing () throws IOException {
+		final Environment mockEnvironment = mockEnvironment();
+		final PacketDeserializer mockDeserializer = mockDeserializer(mockEnvironment);
+		final CefQueryCallback mockCallback = mock(CefQueryCallback.class);
+
+		when(mockDeserializer.deserializeEvenIfShort()).thenReturn(Optional.empty());
+
+		try {
+			new SavedGameOpener(saveFolder().getAbsolutePath(), mockCallback).reopen();
+			fail("an unreadable save was reopened");
+		} catch (final SavedGameOpener.Unreadable expected) {
+			assertTrue(expected.takenBack(), expected.takenBack().contains("taken back"));
+		}
+
+		verifyZeroInteractions(mockCallback);
 	}
 
 	@Test

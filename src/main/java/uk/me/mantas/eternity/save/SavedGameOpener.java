@@ -86,20 +86,52 @@ public class SavedGameOpener implements Runnable {
 		return this;
 	}
 
+	/**
+	 * A save that could not be read back at all: not there, or nothing in it
+	 * readable. Nothing was answered; a writer takes its edit back and says so.
+	 */
+	public static final class Unreadable extends Exception {
+		private final boolean missing;
+
+		Unreadable (final File file, final boolean missing) {
+			super(file.getName() + (missing ? " is not there" : " could not be read") + ".");
+			this.missing = missing;
+		}
+
+		/** What a writer tells the page: the edit is not in the save. */
+		public String takenBack () {
+			return "The change was written, but the save could not be read back afterwards ("
+				+ getMessage() + "), so it was taken back.";
+		}
+	}
+
 	@Override
 	public void run() {
+		try {
+			reopen();
+		} catch (final Unreadable e) {
+			if (e.missing) {
+				OpenSavedGame.notExists(callback);
+			} else {
+				OpenSavedGame.deserializationError(callback);
+			}
+		}
+	}
+
+	/**
+	 * Reads the save and hands it back. A save that cannot be read is thrown,
+	 * not answered: after a write, the writer must take its edit back first.
+	 */
+	public void reopen() throws Unreadable {
 		final File savedgame = new File(saveGameLocation);
 		final File mobileObjectsFile = new File(savedgame, "MobileObjects.save");
 
 		if (!mobileObjectsFile.exists()) {
-			OpenSavedGame.notExists(callback);
-			return;
+			throw new Unreadable(mobileObjectsFile, true);
 		}
 
-		final Optional<DeserializedPackets> read = deserialize(mobileObjectsFile);
-		final List<Property> allPackets = read.isPresent()
-				? read.get().getPackets()
-				: new ArrayList<>();
+		final DeserializedPackets read = deserialize(mobileObjectsFile);
+		final List<Property> allPackets = read.getPackets();
 
 		final List<Property> gameObjects = allPackets.stream()
 				.filter(this::isObjectPersistencePacket)
@@ -114,7 +146,7 @@ public class SavedGameOpener implements Runnable {
 		final JSONObject inventory = extractInventory(gameObjects, characters);
 		final JSONObject abilities = extractAbilities(gameObjects, characters);
 		final JSONArray grimoires = extractGrimoires(gameObjects);
-		final JSONObject validation = validate(read.orElse(null));
+		final JSONObject validation = validate(read);
 
 		sendJSON(currency, campingSupplies, globals, characters, deadCompanions, inventory
 			, abilities, grimoires, validation);
@@ -1570,19 +1602,12 @@ public class SavedGameOpener implements Runnable {
 
 	// Whatever of the file can be read: a damaged save is still shown, with the
 	// validation strip saying it is not all there, and nothing writes it back.
-	private Optional<DeserializedPackets> deserialize(final File mobileObjectsFile) {
+	private DeserializedPackets deserialize(final File mobileObjectsFile) throws Unreadable {
 		try {
-			final Optional<DeserializedPackets> deserialized =
-					packetDeserializer.forFile(mobileObjectsFile).deserializeEvenIfShort();
-
-			if (!deserialized.isPresent()) {
-				OpenSavedGame.deserializationError(callback);
-			}
-
-			return deserialized;
+			return packetDeserializer.forFile(mobileObjectsFile).deserializeEvenIfShort()
+				.orElseThrow(() -> new Unreadable(mobileObjectsFile, false));
 		} catch (final FileNotFoundException e) {
-			OpenSavedGame.deserializationError(callback);
-			return Optional.empty();
+			throw new Unreadable(mobileObjectsFile, false);
 		}
 	}
 }
