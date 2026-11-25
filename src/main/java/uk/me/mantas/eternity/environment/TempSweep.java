@@ -31,8 +31,8 @@ import java.util.regex.Pattern;
  *
  * <p>An editor closed normally deletes its working copy of the open save
  * ({@code EK-editing-*}) and the files Undo keeps ({@code EK-history-*}); a
- * resurrection and a conversion delete their own ({@code EK-donor*},
- * {@code EK-convert*}). One that crashes, is killed or loses power cannot, and
+ * resurrection, a conversion and a rename delete their own ({@code EK-donor*},
+ * {@code EK-convert*}, {@code EK-rename*}). One that crashes, is killed or loses power cannot, and
  * each of those folders is a copy of a save: 43 of them, 1.7 GB, had collected
  * on the machine this was written on.
  *
@@ -47,7 +47,7 @@ import java.util.regex.Pattern;
  */
 public final class TempSweep {
 	private static final Logger logger = Logger.getLogger(TempSweep.class);
-	private static final Pattern OURS = Pattern.compile("EK-(editing-|history-|donor|convert)?[0-9]+");
+	private static final Pattern OURS = Pattern.compile("EK-(editing-|history-|donor|convert|rename)?[0-9]+");
 	private static final long OLD_ENOUGH = TimeUnit.DAYS.toMillis(1);
 
 	private TempSweep () {}

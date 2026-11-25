@@ -45,6 +45,9 @@ import uk.me.mantas.eternity.serializer.properties.*;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.AtomicMoveNotSupportedException;
+import java.nio.file.Files;
+import java.nio.file.StandardCopyOption;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -248,32 +251,49 @@ public class ChangesSaver implements Runnable {
 		}
 
 		final File saveFile = new File(pillarsSavesDirectory, saveDirectory.getName());
-		logger.info("Packaging save game to: %s%n", saveFile.getAbsolutePath());
-
-		if (saveFile.exists()) {
-			// It is the player's file -- an earlier edit, or a save that shares
-			// the name -- so it is copied into the backups before it goes. One
-			// that cannot be copied stops the Save rather than being lost.
-			SaveBackups.forThisProcess().backup(saveFile, SaveBackups.Reason.OVERWRITE);
-			logger.info("Old save file exists, attempting to delete: %s%n", saveFile.getAbsolutePath());
-			if (!FileUtils.deleteQuietly(saveFile)) {
-				logger.warn("Unable to delete old save game '%s', attempting overwrite.%n",
-					saveFile.getAbsolutePath());
-			}
-		}
-
 		final File[] saveContents = saveDirectory.listFiles();
 		if (saveContents == null || saveContents.length == 0) {
 			logger.error("Save directory is empty or inaccessible: %s%n", saveDirectory.getAbsolutePath());
 			throw new IOException("No files found to package in " + saveDirectory.getAbsolutePath());
 		}
 
-		logger.info("Zipping %d files into %s%n", saveContents.length, saveFile.getAbsolutePath());
+		// Build the archive at a non-existent sibling path (.saving) first so an
+		// existing save is never deleted or modified before the new archive is
+		// complete and backed up.
+		final File saving = new File(pillarsSavesDirectory,
+			saveFile.getName() + "." + UUID.randomUUID().toString().replace("-", "").substring(0, 8) + ".saving");
+		logger.info("Zipping %d files into %s%n", saveContents.length, saving.getAbsolutePath());
 
-		final ZipFile saveArchive = new ZipFile(saveFile);
-		saveArchive.addFiles(
-			new ArrayList<>(Arrays.asList(saveContents)), new ZipParameters());
-		logger.info("Successfully packaged save game: %s%n", saveFile.getAbsolutePath());
+		try {
+			try (final ZipFile saveArchive = new ZipFile(saving)) {
+				saveArchive.addFiles(
+					new ArrayList<>(Arrays.asList(saveContents)), new ZipParameters());
+			}
+
+			if (!saving.isFile() || saving.length() < 1) {
+				throw new IOException("Nothing was written for " + saveFile.getName());
+			}
+
+			if (saveFile.exists()) {
+				// It is the player's file -- an earlier edit, or a save that shares
+				// the name -- so it is copied into the backups before it goes. One
+				// that cannot be copied stops the Save rather than being lost.
+				SaveBackups.forThisProcess().backup(saveFile, SaveBackups.Reason.OVERWRITE);
+			}
+
+			try {
+				Files.move(saving.toPath(), saveFile.toPath()
+					, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+			} catch (final AtomicMoveNotSupportedException e) {
+				Files.move(saving.toPath(), saveFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
+			}
+
+			logger.info("Successfully packaged save game: %s%n", saveFile.getAbsolutePath());
+		} finally {
+			if (saving.exists() && !saving.delete()) {
+				saving.deleteOnExit();
+			}
+		}
 	}
 
 	// The game's load list draws a save's party from 0.png, 1.png… inside it:

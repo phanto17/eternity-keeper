@@ -423,7 +423,9 @@ public class SaveConverter {
 		try {
 			final File extracted = new File(staging, "in");
 			final File rewritten = new File(staging, "out");
-			new ZipFile(archive).extractAll(extracted.getAbsolutePath());
+			try (final ZipFile inZip = new ZipFile(archive)) {
+				inZip.extractAll(extracted.getAbsolutePath());
+			}
 
 			final Result result = convertFolder(extracted, rewritten, target);
 
@@ -436,8 +438,10 @@ public class SaveConverter {
 				throw new IOException("Cannot create " + destinationFolder.getAbsolutePath());
 			}
 
-			new ZipFile(output).addFiles(
-				new ArrayList<>(Arrays.asList(contents)), new ZipParameters());
+			try (final ZipFile outZip = new ZipFile(output)) {
+				outZip.addFiles(
+					new ArrayList<>(Arrays.asList(contents)), new ZipParameters());
+			}
 
 			return new Result(
 				result.converted, result.copied, result.fellBack, result.replacements, output);
@@ -470,15 +474,16 @@ public class SaveConverter {
 	private static byte[] readFromArchive (final File archive, final String entryName)
 		throws IOException {
 
-		final ZipFile zip = new ZipFile(archive);
-		final FileHeader header = zip.getFileHeader(entryName);
+		try (final ZipFile zip = new ZipFile(archive)) {
+			final FileHeader header = zip.getFileHeader(entryName);
 
-		if (header == null) {
-			throw new IOException(entryName + " is missing from " + archive.getName());
-		}
+			if (header == null) {
+				throw new IOException(entryName + " is missing from " + archive.getName());
+			}
 
-		try (InputStream stream = zip.getInputStream(header)) {
-			return IOUtils.toByteArray(stream);
+			try (InputStream stream = zip.getInputStream(header)) {
+				return IOUtils.toByteArray(stream);
+			}
 		}
 	}
 

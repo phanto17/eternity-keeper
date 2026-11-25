@@ -61,14 +61,16 @@ public class TempSweepTest extends TestHarness {
 		final File history = folder(temp, "EK-history-5678", TWO_DAYS_AGO);
 		final File donor = folder(temp, "EK-donor91011", TWO_DAYS_AGO);
 		final File conversion = folder(temp, "EK-convert121314", TWO_DAYS_AGO);
+		final File rename = folder(temp, "EK-rename202122", TWO_DAYS_AGO);
 		final File plain = folder(temp, "EK-1516171819", TWO_DAYS_AGO);
 		final File working = folder(temp, "EK-unpacked-saves", TWO_DAYS_AGO);
 
-		assertEquals(5, TempSweep.sweep(temp, working, NOW));
+		assertEquals(6, TempSweep.sweep(temp, working, NOW));
 		assertFalse(editing.exists());
 		assertFalse(history.exists());
 		assertFalse(donor.exists());
 		assertFalse(conversion.exists());
+		assertFalse(rename.exists());
 		assertFalse(plain.exists());
 		assertTrue("the folder the save list unpacks into is the editor's own", working.exists());
 	}

@@ -259,8 +259,7 @@ public class SaveBackups {
 
 	/** saveinfo.xml straight out of the .savegame, or null if it has none. */
 	private static Match saveInfo (final File save) {
-		try {
-			final ZipFile zip = new ZipFile(save);
+		try (final ZipFile zip = new ZipFile(save)) {
 			final FileHeader header = zip.getFileHeader("saveinfo.xml");
 			if (header == null) {
 				return null;

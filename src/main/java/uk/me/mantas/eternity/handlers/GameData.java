@@ -26,6 +26,7 @@ import org.json.JSONObject;
 import uk.me.mantas.eternity.Logger;
 import uk.me.mantas.eternity.Settings;
 import uk.me.mantas.eternity.environment.AppPaths;
+import uk.me.mantas.eternity.environment.AppVersion;
 import uk.me.mantas.eternity.environment.Environment;
 import uk.me.mantas.eternity.environment.GameDataExtraction;
 import uk.me.mantas.eternity.save.ItemCatalog;
@@ -77,6 +78,7 @@ public class GameData extends CefMessageRouterHandlerAdapter {
 		// The Settings dialog says where the editor keeps its own files, so an
 		// error message can point at eternity.log without guessing a path.
 		final AppPaths paths = Environment.getInstance().directory().paths();
+		status.put("version", AppVersion.current());
 		status.put("dataFolder", paths.data().getAbsolutePath());
 		status.put("logFile", paths.logFile().getAbsolutePath());
 

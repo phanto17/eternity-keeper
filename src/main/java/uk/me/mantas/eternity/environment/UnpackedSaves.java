@@ -82,8 +82,8 @@ public class UnpackedSaves {
 			return;
 		}
 
-		try {
-			new ZipFile(archive).extractAll(key.getAbsolutePath());
+		try (final ZipFile zip = new ZipFile(archive)) {
+			zip.extractAll(key.getAbsolutePath());
 		} catch (final ZipException e) {
 			logger.error("Unable to unzip '%s': %s%n", archive.getAbsolutePath(), e.getMessage());
 			throw new IOException(archive.getName() + " could not be unpacked: " + e.getMessage(), e);

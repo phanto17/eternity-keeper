@@ -34,6 +34,7 @@ import uk.me.mantas.eternity.factory.PacketDeserializerFactory;
 import uk.me.mantas.eternity.factory.SharpSerializerFactory;
 import uk.me.mantas.eternity.game.*;
 import uk.me.mantas.eternity.save.ChangesSaver;
+import uk.me.mantas.eternity.save.SaveBackups;
 import uk.me.mantas.eternity.serializer.PacketDeserializer;
 import uk.me.mantas.eternity.serializer.SharpSerializer;
 import uk.me.mantas.eternity.serializer.WriteRefusedException;
@@ -50,6 +51,8 @@ import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.net.URISyntaxException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.util.*;
 
 import static org.joox.JOOX.$;
@@ -808,5 +811,105 @@ public class ChangesSaverTest extends TestHarness {
 		mockTimeIntervalField.name = "SerializedSeconds";
 		exposedSaver.call("updateValue", argMap);
 		assertEquals(2000, mockTimeIntervalField.value);
+	}
+
+	@Test
+	public void aFailedSaveLeavesAnExistingArchiveInTheSavesFolderAlone () throws Exception {
+		final Settings mockSettings = mockSettings();
+		final JSONObject mockJSON = mock(JSONObject.class);
+		mockSettings.json = mockJSON;
+		final File savesLocation = EKUtils.createTempDir(PREFIX).get();
+		when(mockJSON.optString(eq("savesLocation"), anyString()))
+			.thenReturn(savesLocation.getAbsolutePath());
+
+		final File existing = new File(savesLocation, "id 0 Encampment.savegame");
+		final File seedDir = new File(
+			getClass().getResource("/ChangesSaverTest/id 0 Encampment.savegame").toURI());
+		new ZipFile(existing).addFiles(
+			new ArrayList<>(Arrays.asList(seedDir.listFiles())), new net.lingala.zip4j.model.ZipParameters());
+		final byte[] before = Files.readAllBytes(existing.toPath());
+
+		final File emptySaveDir = new File(EKUtils.createTempDir(PREFIX).get(), "id 0 Encampment.savegame");
+		assertTrue(emptySaveDir.mkdir());
+
+		try {
+			invokePackageSaveGame(emptySaveDir);
+			fail("expected IOException for empty save directory");
+		} catch (final IOException ignored) {
+		}
+
+		assertTrue(existing.isFile());
+		assertArrayEquals(before, Files.readAllBytes(existing.toPath()));
+		assertArrayEquals(new String[] {existing.getName()}, savesLocation.list());
+		assertTrue(SaveBackups.forThisProcess().list().isEmpty());
+	}
+
+	@Test
+	public void aSecondSaveReplacesTheArchiveWholeAndBacksUpThePreviousOne () throws Exception {
+		final Environment mockEnvironment = mockEnvironment();
+		final File workingDirectory = EKUtils.createTempDir(PREFIX).get();
+		final File settingsFile = new File(workingDirectory, "settings.json");
+
+		FileUtils.writeStringToFile(settingsFile, "{}", StandardCharsets.UTF_8);
+		when(mockEnvironment.directory().settingsFile()).thenReturn(settingsFile);
+		when(mockEnvironment.directory().working()).thenReturn(workingDirectory);
+		when(mockEnvironment.factory().packetDeserializer())
+			.thenReturn(new PacketDeserializerFactory());
+		when(mockEnvironment.factory().sharpSerializer()).thenReturn(new SharpSerializerFactory());
+
+		final Settings mockSettings = mockSettings();
+		final JSONObject mockJSON = mock(JSONObject.class);
+		mockSettings.json = mockJSON;
+		doThrow(new JSONException("")).when(mockJSON).getString(anyString());
+		final File savesLocation = EKUtils.createTempDir(PREFIX).get();
+		when(mockJSON.optString(eq("savesLocation"), anyString()))
+			.thenReturn(savesLocation.getAbsolutePath());
+
+		final File opened = new File(
+			getClass().getResource("/ChangesSaverTest/id 0 Encampment.savegame").toURI());
+
+		final JSONObject firstRequest = new JSONObject()
+			.put("savedYet", false)
+			.put("saveName", "FIRST SAVE")
+			.put("absolutePath", opened.getAbsolutePath())
+			.put("saveData", new JSONObject()
+				.put("characters", new org.json.JSONArray())
+				.put("currency", 10.0)
+				.put("globals", new JSONObject()
+					.put("Global", new JSONObject())
+					.put("InGameGlobal", new JSONObject())));
+
+		final File writtenDir = new ChangesSaver(firstRequest).saveChanges();
+		final File archive = new File(savesLocation, writtenDir.getName());
+		assertTrue(archive.isFile());
+		assertTrue(SaveBackups.forThisProcess().list().isEmpty());
+
+		final JSONObject secondRequest = new JSONObject(firstRequest.toString())
+			.put("savedYet", true)
+			.put("saveName", "SECOND SAVE");
+		new ChangesSaver(secondRequest).saveChanges();
+
+		final File unpacked = EKUtils.createTempDir(PREFIX).get();
+		try (final ZipFile zip = new ZipFile(archive)) {
+			zip.extractAll(unpacked.getAbsolutePath());
+		}
+		final Match info = $(new File(unpacked, "saveinfo.xml"));
+		assertEquals("SECOND SAVE", info.find("Simple[name='UserSaveName']").attr("value"));
+
+		final List<SaveBackups.Backup> backups = SaveBackups.forThisProcess().list();
+		assertEquals(1, backups.size());
+		assertEquals(SaveBackups.Reason.OVERWRITE, backups.get(0).reason);
+		assertEquals("FIRST SAVE", backups.get(0).userSaveName);
+		assertArrayEquals(new String[] {archive.getName()}, savesLocation.list());
+	}
+
+	private static void invokePackageSaveGame (final File saveDirectory) throws Exception {
+		final Method packageSave = ChangesSaver.class.getDeclaredMethod("packageSaveGame", File.class);
+		packageSave.setAccessible(true);
+		try {
+			packageSave.invoke(null, saveDirectory);
+		} catch (final InvocationTargetException e) {
+			throw (Exception) e.getCause();
+		}
 	}
 }

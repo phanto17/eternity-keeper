@@ -33,6 +33,9 @@ import uk.me.mantas.eternity.serializer.properties.SimpleProperty;
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.nio.file.AtomicMoveNotSupportedException;
+import java.nio.file.Files;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -58,10 +61,8 @@ public class CharacterExporter {
 		}
 
 		final File chrFile = new File(chrFileName);
-		//noinspection ResultOfMethodCallIgnored
-		chrFile.delete();
-
-		if (!chrFile.createNewFile()) {
+		final File parent = chrFile.getAbsoluteFile().getParentFile();
+		if (parent == null || (!parent.isDirectory() && !parent.mkdirs())) {
 			throw new FileNotFoundException("Cannot create " + chrFileName);
 		}
 
@@ -75,26 +76,14 @@ public class CharacterExporter {
 
 	/**
 	 * Writes the character and everything it owns into the file this was made
-	 * for. An export that is refused or fails leaves no file behind: the
-	 * constructor made an empty one to write into, and an empty or partial
-	 * {@code .chr} beside the user's others would look like a character.
+	 * for. An export that is refused or fails leaves any existing file alone
+	 * and leaves no partial {@code .chr} behind: the stream goes to a sibling
+	 * temp file first and is moved into place only once complete.
 	 *
 	 * @throws ShortReadException when the save could be read only in part --
 	 *         whatever the character owns after the damage would be missing
 	 */
 	public boolean export () throws IOException {
-		boolean exported = false;
-		try {
-			exported = write();
-			return exported;
-		} finally {
-			if (!exported && chrFile.exists() && !chrFile.delete()) {
-				logger.error("Unable to remove the unfinished %s.%n", chrFile.getAbsolutePath());
-			}
-		}
-	}
-
-	private boolean write () throws IOException {
 		final File mobileObjectsFile = new File(saveDirectory, "MobileObjects.save");
 		if (!mobileObjectsFile.exists()) {
 			throw new FileNotFoundException(mobileObjectsFile.getAbsolutePath());
@@ -112,11 +101,29 @@ public class CharacterExporter {
 			return false;
 		}
 
-		// The save's own leading count, which the write sets to what the file
-		// holds; the save is never written from this reading.
-		new DeserializedPackets(extractedObjects, count).reserialize(chrFile);
+		final File partial = File.createTempFile(
+			"EK-chr", ".partial", chrFile.getAbsoluteFile().getParentFile());
+		try {
+			// The save's own leading count, which the write sets to what the file
+			// holds; the save is never written from this reading.
+			new DeserializedPackets(extractedObjects, count).reserialize(partial);
+			if (!partial.isFile() || partial.length() < 1) {
+				throw new IOException("Nothing was written for " + chrFile.getName());
+			}
 
-		return true;
+			try {
+				Files.move(partial.toPath(), chrFile.toPath()
+					, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+			} catch (final AtomicMoveNotSupportedException e) {
+				Files.move(partial.toPath(), chrFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
+			}
+
+			return true;
+		} finally {
+			if (partial.exists() && !partial.delete()) {
+				logger.error("Unable to remove the unfinished %s.%n", partial.getAbsolutePath());
+			}
+		}
 	}
 
 	private List<Property> extractCharactersObjects (final SaveModel save) {

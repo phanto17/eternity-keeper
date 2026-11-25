@@ -163,10 +163,11 @@ public class SaveGameExtractor {
 			org.apache.commons.io.FileUtils.deleteDirectory(destination);
 		}
 
-		final ZipFile archive = new ZipFile(save);
-		for (final String name : LISTED_FILES) {
-			if (archive.getFileHeader(name) != null) {
-				archive.extractFile(name, destination.getAbsolutePath());
+		try (final ZipFile archive = new ZipFile(save)) {
+			for (final String name : LISTED_FILES) {
+				if (archive.getFileHeader(name) != null) {
+					archive.extractFile(name, destination.getAbsolutePath());
+				}
 			}
 		}
 

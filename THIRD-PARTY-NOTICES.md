@@ -24,6 +24,14 @@ Eternity is a trademark of its respective owners.
 | Chromium Embedded Framework (CEF) and Chromium (`libcef.dll` and resources) | BSD 3-Clause, © The Chromium Authors, plus the licenses of Chromium's own third-party components, listed by Chromium's `about:credits` |
 | JOGL and GlueGen | BSD 2-Clause (JogAmp Community) |
 
+## User interface (`ui\`)
+
+| Component | Version | License |
+|---|---|---|
+| jQuery | 2.1.4 | MIT, © jQuery Foundation, Inc. |
+| Bootstrap (including normalize.css and Glyphicons Halflings) | 3.3.4 | MIT, © Twitter, Inc. |
+| Font Awesome | 4.3.0 | Font: SIL Open Font License 1.1; CSS: MIT (Dave Gandy) |
+
 ## Libraries inside `eternity-keeper.jar`
 
 | Component | Version | License |

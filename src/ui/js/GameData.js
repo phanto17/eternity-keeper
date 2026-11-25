@@ -42,6 +42,7 @@ var GameData = function () {
 		, finished: false
 		, dismissed: false
 		, data: null
+		, version: ''
 		, logFile: ''
 	};
 
@@ -195,9 +196,10 @@ GameData.prototype.renderSettings = function (state) {
 
 	line.toggleClass('text-danger', !!state.error && !state.running);
 
+	var versionText = state.version ? 'Eternity Keeper ' + state.version + '. ' : '';
 	self.html.settingsFiles.text(state.logFile
-		? 'If something goes wrong, the log to report is ' + state.logFile + '.'
-		: '');
+		? versionText + 'If something goes wrong, the log to report is ' + state.logFile + '.'
+		: (state.version ? 'Eternity Keeper ' + state.version + '.' : ''));
 	self.renderProgress(self.html.settingsGameDataProgress, state);
 	button.toggle(state.available);
 	button.text(self.buttonLabel(state));

@@ -78,7 +78,9 @@ public class SaveGameRenamer {
 			SaveGameInfo.updateSaveInfo(staging, newUserSaveName);
 
 			FileUtils.copyFile(saveArchive, renaming);
-			new ZipFile(renaming).addFile(saveinfo);
+			try (final ZipFile zip = new ZipFile(renaming)) {
+				zip.addFile(saveinfo);
+			}
 
 			try {
 				Files.move(renaming.toPath(), saveArchive.toPath()

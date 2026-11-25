@@ -54,5 +54,8 @@ jobs:
       - name: UI undo history tests
         run: node src/test/js/SaveHistoryTest.js
 
+      - name: UI save list model tests
+        run: node src/test/js/SaveListModelTest.js
+
       - name: Game-data reader compiles
-        run: python -m py_compile tools/gamedata/extract_gamedata.py tools/gamedata/items.py tools/gamedata/stronghold.py tools/gamedata/identity.py
+        run: python -m py_compile tools/gamedata/extract_gamedata.py tools/gamedata/items.py tools/gamedata/stronghold.py tools/gamedata/identity.py tools/gamedata/ingameglobal.py

@@ -29,6 +29,7 @@ import uk.me.mantas.eternity.save.model.SaveModel;
 import uk.me.mantas.eternity.serializer.TypePair;
 import uk.me.mantas.eternity.serializer.DeserializedPackets;
 import uk.me.mantas.eternity.serializer.PacketDeserializer;
+import uk.me.mantas.eternity.serializer.ShortReadException;
 import uk.me.mantas.eternity.serializer.properties.ComplexProperty;
 import uk.me.mantas.eternity.serializer.properties.Property;
 import uk.me.mantas.eternity.serializer.properties.SingleDimensionalArrayProperty;
@@ -39,6 +40,8 @@ import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.net.URISyntaxException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -108,6 +111,69 @@ public class CharacterExporterTest extends TestHarness {
 		, URISyntaxException {
 
 		assertChrFileContainsCharacter(COMPANION_GUID);
+	}
+
+	@Test
+	public void aFailedOrRefusedExportLeavesAnExistingChrFileAlone () throws Exception {
+		final byte[] prior = "prior character".getBytes(StandardCharsets.UTF_8);
+
+		// (a) Missing MobileObjects.save -> FileNotFoundException
+		final File emptyDir = EKUtils.createTempDir(PREFIX).get();
+		final File missingTarget = tempChrFile();
+		FileUtils.writeByteArrayToFile(missingTarget, prior);
+		try {
+			new CharacterExporter(
+				emptyDir.getAbsolutePath(), PLAYER_GUID, missingTarget.getAbsolutePath()).export();
+			fail("expected FileNotFoundException");
+		} catch (final FileNotFoundException ignored) {
+		}
+		assertArrayEquals(prior, Files.readAllBytes(missingTarget.toPath()));
+		assertArrayEquals(new String[] {missingTarget.getName()}, missingTarget.getParentFile().list());
+
+		// (b) Unknown GUID -> export() returns false
+		final File unknownTarget = tempChrFile();
+		FileUtils.writeByteArrayToFile(unknownTarget, prior);
+		assertFalse(new CharacterExporter(
+			resourceDirectory().getAbsolutePath()
+			, "00000000-dead-beef-0000-000000000000"
+			, unknownTarget.getAbsolutePath()).export());
+		assertArrayEquals(prior, Files.readAllBytes(unknownTarget.toPath()));
+		assertArrayEquals(new String[] {unknownTarget.getName()}, unknownTarget.getParentFile().list());
+
+		// (c) Truncated MobileObjects.save -> ShortReadException
+		final File damagedDir = EKUtils.createTempDir(PREFIX).get();
+		final File damagedWorld = new File(damagedDir, "MobileObjects.save");
+		FileUtils.copyFile(new File(resourceDirectory(), "MobileObjects.save"), damagedWorld);
+		ShortReadTest.cutShort(damagedWorld, "Global(Clone)");
+
+		final File shortTarget = tempChrFile();
+		FileUtils.writeByteArrayToFile(shortTarget, prior);
+		try {
+			new CharacterExporter(
+				damagedDir.getAbsolutePath(), PLAYER_GUID, shortTarget.getAbsolutePath()).export();
+			fail("expected ShortReadException");
+		} catch (final ShortReadException ignored) {
+		}
+		assertArrayEquals(prior, Files.readAllBytes(shortTarget.toPath()));
+		assertArrayEquals(new String[] {shortTarget.getName()}, shortTarget.getParentFile().list());
+	}
+
+	@Test
+	public void exportReplacesAnExistingChrFileWhole () throws Exception {
+		final File chrFile = tempChrFile();
+		FileUtils.writeStringToFile(chrFile, "prior character", StandardCharsets.UTF_8);
+
+		assertTrue(new CharacterExporter(
+			resourceDirectory().getAbsolutePath()
+			, PLAYER_GUID
+			, chrFile.getAbsolutePath()).export());
+
+		final Optional<DeserializedPackets> deserialized = new PacketDeserializer(chrFile).deserialize();
+		assertTrue(deserialized.isPresent());
+		assertTrue(deserialized.get().getPackets().stream()
+			.map(EKUtils::unwrapPacket)
+			.anyMatch(packet -> PLAYER_GUID.equals(packet.ObjectID)));
+		assertArrayEquals(new String[] {chrFile.getName()}, chrFile.getParentFile().list());
 	}
 
 	@Test

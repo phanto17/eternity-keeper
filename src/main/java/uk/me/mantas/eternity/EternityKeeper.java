@@ -29,6 +29,7 @@ import org.cef.browser.CefBrowser;
 import org.cef.handler.CefAppHandlerAdapter;
 import org.json.JSONObject;
 import uk.me.mantas.eternity.environment.AppPaths;
+import uk.me.mantas.eternity.environment.AppVersion;
 import uk.me.mantas.eternity.environment.Environment;
 import uk.me.mantas.eternity.environment.TempSweep;
 
@@ -43,6 +44,7 @@ import java.util.Locale;
 import java.util.Optional;
 
 public class EternityKeeper extends JFrame {
+	private static final Logger logger = Logger.getLogger(EternityKeeper.class);
 	private static final Color OBSIDIAN_BG = new Color(0x1b, 0x16, 0x11);
 	private final CefApp cefApp;
 	private final CefClient cefClient;
@@ -162,6 +164,8 @@ public class EternityKeeper extends JFrame {
 
 		Settings.initialise();
 		rolloverLogFile(paths.logFile());
+		logger.info("Eternity Keeper %s (Java %s, %s)%n"
+			, AppVersion.current(), System.getProperty("java.version"), System.getProperty("os.name"));
 
 		// A copy of a save for every editor that crashed or was killed.
 		TempSweep.inBackground(Environment.getInstance().directory().working());

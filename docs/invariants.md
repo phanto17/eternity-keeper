@@ -80,7 +80,11 @@ has the short version.
     beside the save, moves that over the save whole, and only then updates
     the working copy (same review; `SaveGameRenamerTest`; a renamed Caed
     Nua save showed its new name in the game's load list and loaded with
-    only the baseline exceptions, 2026-10-27).
+    only the baseline exceptions, 2026-10-27). Likewise, `ChangesSaver.packageSaveGame`
+    builds the archive in a sibling `.saving` file first and backs up and
+    replaces `saveFile` only once the archive is written (before 1.2.0 it
+    deleted `saveFile` before packaging), and `CharacterExporter` writes to
+    a `.partial` sibling and moves it into place only when complete.
 17. **A read that comes up short is never written.** On a file cut short or
     damaged part-way, `PacketDeserializer` used to hand back whatever came
     before the damage with nothing to say so, and every writer then wrote that
