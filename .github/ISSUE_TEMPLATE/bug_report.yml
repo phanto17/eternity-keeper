@@ -33,7 +33,7 @@ body:
     id: version
     attributes:
       label: Eternity Keeper version
-      description: From the download's file name, e.g. 1.0.0-beta
+      description: Shown in File → Settings, or in the download's file name (e.g. 1.2.0)
     validations:
       required: true
 

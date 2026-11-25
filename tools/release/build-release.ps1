@@ -171,7 +171,8 @@ New-Item -ItemType Directory -Force (Join-Path $stage 'lib\native') | Out-Null
 Copy-Item (Join-Path $repo 'lib\native\win64') (Join-Path $stage 'lib\native\win64') -Recurse
 Copy-Item $jre (Join-Path $stage 'jre') -Recurse
 Copy-Item (Join-Path $frozen 'extract_gamedata') (Join-Path $stage 'gamedata') -Recurse
-Copy-Item (Join-Path $PSScriptRoot 'README.txt') $stage
+$readmeText = (Get-Content (Join-Path $PSScriptRoot 'README.txt') -Raw -Encoding utf8).Replace('{version}', $version)
+[IO.File]::WriteAllText((Join-Path $stage 'README.txt'), $readmeText, [Text.UTF8Encoding]::new($false))
 foreach ($doc in 'LICENSE', 'CHANGELOG.md', 'THIRD-PARTY-NOTICES.md') {
 	Copy-Item (Join-Path $repo $doc) $stage
 }
@@ -199,7 +200,8 @@ Publish $zip
 $compiler = Find-Iscc $Iscc
 if ($compiler) {
 	Step "Building the installer with $compiler"
-	$definitions = @("/DAppVersion=$version", "/DStage=$stage", "/DOutput=$release")
+	$versionInfo = if ($version -match '^(\d+\.\d+\.\d+)') { "$($Matches[1]).0" } else { '1.0.0.0' }
+	$definitions = @("/DAppVersion=$version", "/DAppVersionInfo=$versionInfo", "/DStage=$stage", "/DOutput=$release")
 	# The links under "Installed apps" name the repository this release is
 	# built from: the one a GitHub workflow runs in, else the checkout's origin.
 	$projectUrl = if ($env:GITHUB_REPOSITORY) { "https://github.com/$env:GITHUB_REPOSITORY" }

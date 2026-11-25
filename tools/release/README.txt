@@ -1,4 +1,4 @@
-ETERNITY KEEPER 1.0 (beta)
+ETERNITY KEEPER {version}
 A save editor for Pillars of Eternity
 
 Unofficial fan project, not affiliated with Obsidian Entertainment or Paradox
@@ -42,8 +42,8 @@ Eternity Keeper never writes to the save you opened. Save always writes a
 new save file, and the game lists it beside the original.
 
 Before it deletes or renames a save, or replaces one of the same name, it
-keeps a copy. File > Backups lists the ten most recent and puts any of them
-back.
+keeps a copy. File > Backups lists the ten most recent of each kind and puts
+any of them back.
 
 Keep a copy of your saves folder anyway, at least until you have loaded an
 edited save in the game:

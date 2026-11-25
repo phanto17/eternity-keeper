@@ -15,6 +15,12 @@ The four blockers to "someone else can use this" are done: a Windows zip that
 needs nothing installed, a game-data reader the editor runs itself, running from
 any folder, and the DevTools port off by default. What is worth knowing:
 
+- **`environment/AppVersion` reads the running version** from
+  `/META-INF/maven/uk.me.mantas/eternity/pom.properties` in the shaded jar
+  (falling back to `pom.xml` when running from unpacked classes). `EternityKeeper`
+  logs it at startup, `handlers/GameData` sends it to Settings, and
+  `tools/release/build-release.ps1` substitutes `{version}` into `README.txt`
+  and passes `AppVersionInfo` (`<major>.<minor>.<patch>.0`) to Inno Setup.
 - **`environment/AppPaths` owns every path the editor itself uses.** *home* is
   the jar's folder (the UI, natives and reader ship there); *data* is
   `%APPDATA%\Eternity Keeper` unless `-Dek.data` says otherwise (settings.json,

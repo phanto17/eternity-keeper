@@ -1,5 +1,32 @@
 # Changelog
 
+## 1.2.0 (2026-11-25)
+
+The first full release of Eternity Keeper, building on version 0.21a and the
+1.0 / 1.1 beta releases. Verified against *Pillars of Eternity* v3.9.5 on Steam
+and GOG: character attributes, skills, identity, portraits, inventory,
+equipment, weapon sets, loadouts, abilities, talents, wizard grimoires,
+stronghold upgrades and people, vendor stock cleanup, party management,
+companion resurrection (with personal quest restore), character import/export,
+save comparison, search across everything (<kbd>Ctrl</kbd>+<kbd>F</kbd>),
+session Undo/Redo, localized game names, and automatic save backups.
+
+### Fixed and improved since 1.1.1-beta
+
+- **Saving replaces an existing save file whole.** `Save` now writes the new
+  `.savegame` archive to a sibling temporary file first, backs up any existing
+  save of that name, and moves the completed archive into place — so an
+  interrupted or failed Save leaves the earlier file untouched.
+- **Exporting a character keeps any earlier `.chr` file until the new one is
+  ready.** A refused or failed export no longer deletes an existing `.chr` file
+  of the same name, and leaves no partial file behind.
+- **Settings shows the Eternity Keeper version**, and startup writes the
+  version, Java runtime, and OS to `eternity.log`.
+- **Temporary folders from an interrupted rename** (`EK-rename*`) are swept
+  on later launches alongside the editor's other working folders.
+- **Removed unused Proxima Nova font files** from `ui/fonts` and added the
+  UI libraries (`ui\`) to `THIRD-PARTY-NOTICES.md`.
+
 ## 1.1.1-beta (2026-11-04)
 
 ### Fixed

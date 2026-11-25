@@ -31,7 +31,7 @@ installs once with no folder given, checks that setup chose the user's own
 Programs folder, and removes that again.
 
 .EXAMPLE
-pwsh tools\release\test-installer.ps1 -Setup target\release\EternityKeeper-1.0.0-beta-win64-setup.exe
+pwsh tools\release\test-installer.ps1 -Setup target\release\EternityKeeper-1.2.0-win64-setup.exe
 #>
 param(
 	[Parameter(Mandatory)][string]$Setup,

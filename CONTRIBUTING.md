@@ -56,6 +56,7 @@ node src/test/js/SaveMergeTest.js
 node src/test/js/SaveFindTest.js
 node src/test/js/SaveCompareTest.js
 node src/test/js/SaveHistoryTest.js
+node src/test/js/SaveListModelTest.js
 ```
 
 The scripted UI suites, which drive a running editor over the DevTools
@@ -88,11 +89,11 @@ none of the development setup on it: whenever the packaging or the game-data
 reader changes, when run by hand, and for a tag named `v*`. To release:
 
 1. Set the version in `pom.xml`, and give its section of `CHANGELOG.md` the
-   release date (`## 1.0.0-beta (2026-10-06)`); push, and wait for `CI` and
+   release date (`## 1.2.0 (2026-11-25)`); push, and wait for `CI` and
    `Package` to pass.
 2. Tag that commit with `v` and the version, and push the tag:
-   `git tag -a v1.0.0-beta -m "Eternity Keeper 1.0.0-beta"`, then
-   `git push origin refs/tags/v1.0.0-beta`.
+   `git tag -a v1.2.0 -m "Eternity Keeper 1.2.0"`, then
+   `git push origin refs/tags/v1.2.0`.
 3. A few minutes later the tag's `Package` run has built and tested the
    release again and left a draft on the Releases page, holding the zip, the
    installer and their checksums, with a page written by

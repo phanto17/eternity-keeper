@@ -7,12 +7,12 @@ next. Kept next to the code so it stays honest.
 
 ## 1. Where the project actually is
 
-~30,000 lines of Java, 628 passing JUnit tests plus node-run suites for the
-UI's save merge, search, comparison and undo history, a jQuery/Bootstrap UI running on an
+~30,000 lines of Java, 770+ passing JUnit tests plus 5 node-run suites for the
+UI's save merge, search, comparison, undo history and save list, a jQuery/Bootstrap UI running on an
 embedded Chromium (JCEF),
 and a save format that has been reverse-engineered far enough to mint objects
 the game accepts and to rewrite the area files as well as the world state.
-Twenty-five scripted UI suites drive the running editor against a real
+Thirty scripted UI suites drive the running editor against a real
 13-character save; see §2 for what the last full pass found.
 
 ### Shipped and verified in-game

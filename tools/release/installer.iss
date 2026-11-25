@@ -3,7 +3,7 @@
 ; Built by tools\release\build-release.ps1 out of the same staged folder the
 ; zip is made from, so the two always hold the same files:
 ;
-;   ISCC /DAppVersion=1.0.0-beta /DStage="...\target\release\Eternity Keeper"
+;   ISCC /DAppVersion=1.2.0 /DStage="...\target\release\Eternity Keeper"
 ;        /DOutput="...\target\release" tools\release\installer.iss
 ;
 ; What it does that the zip cannot: a Start menu entry, an entry under
@@ -19,6 +19,10 @@
 #endif
 #ifndef Output
   #define Output "."
+#endif
+
+#ifndef AppVersionInfo
+  #define AppVersionInfo "1.2.0.0"
 #endif
 
 #define AppName "Eternity Keeper"
@@ -50,7 +54,7 @@ AppPublisher=Eternity Keeper contributors
 AppPublisherURL={#AppUrl}
 AppSupportURL={#AppUrl}/issues
 AppCopyright=GNU General Public License v3 or later
-VersionInfoVersion=1.0.0.0
+VersionInfoVersion={#AppVersionInfo}
 VersionInfoDescription={#AppName} setup
 
 ; For the current user unless they ask otherwise, so no administrator prompt.
