@@ -431,6 +431,22 @@ public class StatusEffect {
 		ConsumableDurationMult,
 		DisableAbilityUse,
 		ShortenAfflictionDurationOngoing,
-		Push
+		MeleeWeaponAccuracy,
+		EnemyReflexHitToGrazePercent,
+		BonusHitToCritPercentAll,
+		BonusHitToCritRatioMeleeOneHand,
+		RawStamina,
+		Push(10000),
+		Initiative(10001);
+
+		public final int n;
+
+		ModifiedStat () {
+			this.n = ordinal();
+		}
+
+		ModifiedStat (final int n) {
+			this.n = n;
+		}
 	}
 }

@@ -73,12 +73,12 @@ public class StatusEffectParams {
 	public float LevelScalingExtraValueAdjustment;
 	public float LevelScalingDurationAdjustment;
 	public UUID TrapPrefabSerialized;
-	public Trap TrapSerialized2;
+	public String TrapSerialized2;
 	public UUID EquippablePrefabSerialized;
 	// public Equippable EquippableSerialized2;
 	public String EquippableSerialized2;
 	public UUID AttackPrefabSerialized;
-	public AttackBase AttackPrefabSerialized2;
+	public String AttackPrefabSerialized2;
 	// TODO: Check this.
 	// public Affliction AfflictionPrefabSerialized;
 	public String AfflictionPrefabSerialized;
@@ -95,6 +95,6 @@ public class StatusEffectParams {
 	public Object Root;
 
 	public enum IntervalRateType {
-		None, Damage, Hazard, Footstep
+		None, Damage, Hazard, Footstep, Potion
 	}
 }

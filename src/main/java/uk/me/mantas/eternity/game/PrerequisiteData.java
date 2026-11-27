@@ -23,6 +23,7 @@ public class PrerequisiteData {
 	public CharacterStats.Race RaceValue = CharacterStats.Race.Human;
 	public CharacterStats.SkillType SkillValue = CharacterStats.SkillType.Count;
 	public PrerequisiteType Type;
+	public boolean IsNot;
 	public String Tag;
 	public float Value;
 	public CharacterStats.Class ClassValue;

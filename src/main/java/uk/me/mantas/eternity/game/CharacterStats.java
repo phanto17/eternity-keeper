@@ -135,6 +135,9 @@ public class CharacterStats {
 		, PriestOfWoedica
 		, Lagufaeth
 		, Lich
+		, Eyeless
+		, Kraken
+		, PlayerTrap
 		, Count
 	}
 

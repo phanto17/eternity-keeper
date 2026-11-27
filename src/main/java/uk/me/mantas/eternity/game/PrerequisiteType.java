@@ -21,7 +21,7 @@ package uk.me.mantas.eternity.game;
 
 public enum PrerequisiteType {
 	StatusEffectCount
-	, SummonsCount
+	, SummonsCountNotGreaterThan
 	, EnemiesInAttackRange
 	, AlliesInFriendlyRadius
 	, MainTargetOnly
@@ -42,8 +42,23 @@ public enum PrerequisiteType {
 	, FocusBelowMax
 	, IsRace
 	, HasGrimoire
-	, StaminaPercentAbove
+	, StaminaPercentAtLeast
 	, EquipmentUnlocked
 	, IsDragonOrDrake
-	, Count
+	, CombatTimeAtLeast
+	, IsClass
+	, LevelAtLeast
+	, LevelLowerThanUser
+	, LevelHigherOrEqualToUser
+	, HasKeyword
+	, IsOnMap
+	, IsSummonedCreature
+	, SkillAtLeast
+	, HasAffliction
+	, IsBackerNpc
+	, IsKithMale
+	, IsKithFemale
+	, StatusEffectCountFromOwner
+	, HasInflictedMarker
+	, HasAvailableAction
 }

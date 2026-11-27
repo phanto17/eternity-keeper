@@ -57,9 +57,13 @@ public class AchievementTracker {
 		, DefendedPositionAsStrongholdMaster
 		, NumPX2PrimaryCompanionsGained
 		, NumWeaponOrShieldsLegendaryEnchanted
+		, NumArmorsLegendaryEnchanted
 		, PX2DefeatedMenaceOfMowrghekIen
 		, PX2ReachedReliquaryInAbbey
 		, PX2StoppedThreatSeenInDreams
+		, NumPX2DragonsKilled
+		, NumArchmagesKilled
+		, NumPX2BountiesCompleted
 		, Count
 	}
 }

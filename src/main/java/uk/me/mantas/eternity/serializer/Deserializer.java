@@ -510,12 +510,13 @@ public class Deserializer {
 
 			for (int i = 0; i < constants.length; i++) {
 				final Object constant = constants[i];
-				map.putIfAbsent(i, constant);
 				if (nField != null) {
 					try {
 						map.put(nField.getInt(constant), constant);
 					} catch (final IllegalAccessException ignored) {
 					}
+				} else {
+					map.put(i, constant);
 				}
 			}
 

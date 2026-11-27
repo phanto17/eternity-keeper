@@ -28,6 +28,7 @@ public class ItemMod {
 		, Proofing
 		, Attributes
 		, Unique
+		, WhiteForge
 	}
 
 	public enum TargetMode {
@@ -42,5 +43,9 @@ public class ItemMod {
 		, OnUnconscious
 		, AsSecondaryAttack
 		, OnSpiritShift
+		, OnScoringCritOrHit
+		, OnBeingCritOrHit
+		, OnStaminaBelowRatio
+		, OnScoringKill
 	}
 }
